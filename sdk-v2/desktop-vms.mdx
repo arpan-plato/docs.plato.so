@@ -14,7 +14,7 @@ These VMs are identified by an `is_desktop=True` flag on the underlying simulato
 Every session exposes `session.desktop_env`, which returns the first env whose simulator has `is_desktop=True`, or `None`:
 
 ```python
-session = await plato.sessions.create(task="test-case-id")
+session = await plato.sessions.create(testcase="test-case-id")
 
 desktop = session.desktop_env   # Environment | None
 if desktop:
@@ -398,7 +398,7 @@ Trying to reuse a single call for both would mean always having to bring up a lo
 Pick the right path by checking `session.desktop_env` immediately after session creation — it's `None` for non-desktop sessions and the desktop `Environment` otherwise:
 
 ```python
-session = await plato.sessions.create(task="<test-case-id>")
+session = await plato.sessions.create(testcase="<test-case-id>")
 
 desktop = session.desktop_env
 if desktop is not None:
@@ -444,7 +444,7 @@ Or pass it explicitly: `AsyncPlato(api_key="...")`.
 The script below creates a session with a desktop artifact, exercises each tool surface in turn (status, bash, screenshot, click, key, type, edit), prints the liveview URL so you can watch, and waits until you hit Ctrl+C before flushing state and cleaning up.
 
 <Note>
-`session.evaluate()` requires a linked testcase. This example uses raw artifact IDs, so there's nothing to score against — it calls `session.get_state()` to flush and inspect mutations instead. To run evaluation, create the session from a task with `plato.sessions.create(task="<test-case-id>")` — see the [testcase variant](#testcase-variant-with-evaluate) below.
+`session.evaluate()` requires a linked testcase. This example uses raw artifact IDs, so there's nothing to score against — it calls `session.get_state()` to flush and inspect mutations instead. To run evaluation, create the session from a testcase with `plato.sessions.create(testcase="<test-case-id>")` — see the [testcase variant](#testcase-variant-with-evaluate) below.
 </Note>
 
 ```python
@@ -569,10 +569,23 @@ if __name__ == "__main__":
 
 ### Testcase variant (with `evaluate`)
 
-When the session is created from a testcase, the envs (including the desktop artifact) come from the task definition and scoring is wired up automatically:
+When the session is created from a testcase, the envs (including the desktop artifact) come from the task definition and scoring is wired up automatically. But the session itself doesn't carry the task prompt — you need to fetch it separately with `plato.testcases.list()`, then pass it to your agent.
 
 ```python
-session = await plato.sessions.create(task="<test-case-id>")
+testcase_id = "<test-case-public-id>"
+
+# Fetch the testcase to get the prompt.
+# sessions.create(testcase=...) provisions envs but doesn't
+# expose the prompt text, so fetch it first.
+response = await plato.testcases.list()
+tc = next(t for t in response.testcases if t["publicId"] == testcase_id)
+
+prompt = tc["prompt"]
+scoring_types = tc.get("scoringTypes", [])
+output_schema = tc.get("outputSchema")
+
+# Create the session (auto-provisions envs from the testcase).
+session = await plato.sessions.create(testcase=testcase_id)
 
 desktop = session.desktop_env
 if desktop:
@@ -580,11 +593,26 @@ if desktop:
 
 await session.reset()
 
-# ... agent / manual interaction happens here ...
+# ... pass `prompt` to your agent loop here ...
 
 result = await session.evaluate()
 print(f"success: {result.success}  score: {result.score}")
 ```
+
+Each testcase dict returned by `plato.testcases.list()` contains:
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `publicId` | `str` | The testcase ID you pass to `sessions.create(testcase=...)` |
+| `name` | `str` | Human-readable task name |
+| `prompt` | `str` | The task instructions to give to the agent |
+| `scoringTypes` | `list[str]` | How the task is scored (`"MUTATION"`, `"OUTPUT"`, or both) |
+| `outputSchema` | `dict \| None` | Required JSON schema when scoring type includes `OUTPUT` |
+| `startUrl` | `str \| None` | Optional URL the agent should navigate to first |
+
+<Note>
+When `scoringTypes` includes `"OUTPUT"`, the agent must return a JSON object matching `outputSchema`. Extract it from the agent's final message and pass it as `value` to `session.evaluate(value=...)`. For `"MUTATION"` scoring, evaluation checks database/state changes and no value is needed.
+</Note>
 
 ## Integrating into an existing non-desktop flow
 
@@ -593,18 +621,19 @@ Already have code that works against non-desktop sims? Keep a single code path t
 ```python
 from playwright.async_api import async_playwright
 
-session = await plato.sessions.create(task=task_id)
-await session.reset()
+session = await plato.sessions.create(testcase=testcase_id)
 
 desktop = session.desktop_env
 
 if desktop:
     # Desktop flow — login runs inside the VM's Chrome.
     await desktop.sdk.login(session)
+    await session.reset()
     # Agent drives the desktop VM via desktop.sdk.computer / .bash / .edit
     ...
 else:
     # Classic non-desktop flow — local browser drives each app sim.
+    await session.reset()
     async with async_playwright() as p:
         browser = await p.chromium.launch()
         login_result = await session.login(browser)
