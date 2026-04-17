@@ -85,6 +85,10 @@ Env.artifact("artifact-abc123")
 Env.resource("custom", SimConfigCompute(cpus=4, memory=8192, disk=20000))
 ```
 
+### Desktop VMs
+
+Some simulators are Desktop VMs where the agent operates the VM itself — mouse, keyboard, shell, and files — rather than just browsing to an app URL. See [Desktop VMs](/sdk-v2/desktop-vms).
+
 ## Authentication
 
 Set your API key via environment variable:
@@ -107,5 +111,8 @@ plato = AsyncPlato(api_key="your_api_key")
   </Card>
   <Card title="Environments" icon="server" href="/sdk-v2/environments">
     Execute commands, get state, and manage individual environments
+  </Card>
+  <Card title="Desktop VMs" icon="desktop" href="/sdk-v2/desktop-vms">
+    Full Desktops: in-VM login, computer/bash/edit tooling
   </Card>
 </CardGroup>
