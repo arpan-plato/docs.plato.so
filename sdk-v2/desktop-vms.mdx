@@ -1,0 +1,758 @@
+---
+title: 'Desktop VMs'
+description: 'Full Linux desktop environments with in-VM login and computer/bash/edit tooling'
+---
+
+# Desktop VMs
+
+Some Plato simulators run a **full Linux desktop** — Xvfb, window manager, Chrome, and a real filesystem. Unlike a standard app sim (where the agent just drives a webapp via its public URL), a desktop VM lets the agent operate the VM itself: mouse, keyboard, screen, shell, and files.
+
+These VMs are identified by an `is_desktop=True` flag on the underlying simulator. The rest of the SDK surface — sessions, mutation tracking, snapshots, evaluation — works the same way. Only the interaction surface and the login call are different.
+
+## Detecting a desktop env
+
+Every session exposes `session.desktop_env`, which returns the first env whose simulator has `is_desktop=True`, or `None`:
+
+```python
+session = await plato.sessions.create(task="test-case-id")
+
+desktop = session.desktop_env   # Environment | None
+if desktop:
+    print(f"Desktop VM: {desktop.alias}")
+```
+
+`session.envs` still includes every env — desktop and non-desktop. `session.desktop_env` is just a convenience shortcut for the one that's a desktop.
+
+## Tooling reference
+
+A desktop env exposes four tool surfaces on `env.sdk`: `status`, `computer`, `bash`, and `edit`. Every call is an HTTP round-trip to the VM, so the same calls work from any host (your laptop, a world VM, an agent VM).
+
+```python
+from plato.sims.ubuntu_vm.models import (
+    Action,
+    BashRequest,
+    Command,
+    ComputerRequest,
+    EditRequest,
+    ScrollDirection,
+)
+```
+
+### `status()` — health + display info
+
+```python
+status = await desktop.sdk.status()
+print(status.status)                                # e.g. "ready"
+print(status.resolution.width, status.resolution.height)  # e.g. 1280 720
+```
+
+Use the resolution to size your agent's tool schema (most computer-use models want `display_width_px` / `display_height_px` values that match the actual VM) and as bounds for coordinate-based actions.
+
+### `computer(ComputerRequest)` — pixels, mouse, keyboard
+
+`ComputerRequest` accepts `action`, `coordinate`, `text`, `scroll_direction`, `scroll_amount`, and `duration`. Results come back as `ToolResult` with `base64_image` (screenshots) and optional `output` / `error`. Every `Action` value is covered below, grouped by purpose.
+
+**Screenshots:**
+
+```python
+shot = await desktop.sdk.computer(ComputerRequest(action=Action.screenshot))
+# shot.base64_image is a PNG, base64-encoded.
+```
+
+**Pointer — clicks and drags:**
+
+```python
+# Move, then click. Most models send a mouse_move before every click.
+await desktop.sdk.computer(ComputerRequest(
+    action=Action.mouse_move, coordinate=[500, 300],
+))
+await desktop.sdk.computer(ComputerRequest(
+    action=Action.left_click, coordinate=[640, 360],
+))
+
+# Click-and-drag to a destination.
+await desktop.sdk.computer(ComputerRequest(
+    action=Action.left_click_drag, coordinate=[800, 400],
+))
+
+# Fine-grained mouse control: down → move → up.
+await desktop.sdk.computer(ComputerRequest(
+    action=Action.left_mouse_down, coordinate=[100, 100],
+))
+await desktop.sdk.computer(ComputerRequest(
+    action=Action.mouse_move, coordinate=[300, 300],
+))
+await desktop.sdk.computer(ComputerRequest(
+    action=Action.left_mouse_up, coordinate=[300, 300],
+))
+```
+
+Other click variants — `right_click`, `middle_click`, `double_click`, and `triple_click` (handy for selecting a whole line of text) — take the same `coordinate` argument.
+
+**Keyboard — type, keys, shortcuts:**
+
+```python
+await desktop.sdk.computer(ComputerRequest(
+    action=Action.type, text="hello world",
+))
+
+# Single keys and shortcuts use xdotool syntax.
+await desktop.sdk.computer(ComputerRequest(action=Action.key, text="Return"))
+await desktop.sdk.computer(ComputerRequest(action=Action.key, text="ctrl+a"))
+await desktop.sdk.computer(ComputerRequest(action=Action.key, text="ctrl+shift+Tab"))
+
+# Hold a key for a duration (seconds).
+await desktop.sdk.computer(ComputerRequest(
+    action=Action.hold_key, text="shift", duration=1.0,
+))
+```
+
+**Scroll:**
+
+```python
+await desktop.sdk.computer(ComputerRequest(
+    action=Action.scroll,
+    coordinate=[640, 400],
+    scroll_direction=ScrollDirection.down,   # .up / .down / .left / .right
+    scroll_amount=5,                          # number of scroll "ticks"
+))
+```
+
+**Utility — waits and cursor introspection:**
+
+```python
+# Wait without blocking the remote event loop.
+await desktop.sdk.computer(ComputerRequest(action=Action.wait, duration=0.5))
+
+# Where is the cursor right now?
+pos = await desktop.sdk.computer(ComputerRequest(action=Action.cursor_position))
+# pos.output contains the coordinates as text
+```
+
+### `bash(BashRequest)` — shell access inside the VM
+
+Runs as the VM's session user. `output` is stdout, `error` is stderr.
+
+```python
+# Plain command.
+result = await desktop.sdk.bash(BashRequest(command="ls -la ~"))
+print(result.output)
+
+# Inspect failures.
+result = await desktop.sdk.bash(BashRequest(command="cat /does/not/exist"))
+if result.error:
+    print("failed:", result.error)
+
+# Multi-line / pipelines run through the shell.
+result = await desktop.sdk.bash(BashRequest(command=(
+    "set -euo pipefail\n"
+    "mkdir -p /tmp/work\n"
+    "echo -e 'alpha\\nbeta' | sort -r > /tmp/work/out.txt\n"
+    "cat /tmp/work/out.txt"
+)))
+
+# Custom timeout (default 120s).
+result = await desktop.sdk.bash(BashRequest(
+    command="sleep 3 && echo done",
+    timeout=10,
+))
+
+# Reset the underlying shell if it got wedged.
+await desktop.sdk.bash(BashRequest(command="true", restart=True))
+```
+
+### `edit(EditRequest)` — structured file operations
+
+Safer than `bash` for file content: no quoting hell, and `undo_edit` is built in.
+
+```python
+# Create a new file.
+await desktop.sdk.edit(EditRequest(
+    command=Command.create,
+    path="/tmp/note.txt",
+    file_text="hello\nworld\n",
+))
+
+# View all lines (or a 1-indexed inclusive range).
+await desktop.sdk.edit(EditRequest(command=Command.view, path="/tmp/note.txt"))
+await desktop.sdk.edit(EditRequest(
+    command=Command.view, path="/etc/hosts", view_range=[1, 20],
+))
+
+# Unique-match in-place replace (safer than sed).
+await desktop.sdk.edit(EditRequest(
+    command=Command.str_replace,
+    path="/tmp/note.txt",
+    old_str="hello",
+    new_str="howdy",
+))
+
+# Insert AFTER a specific line (0 = top of file).
+await desktop.sdk.edit(EditRequest(
+    command=Command.insert,
+    path="/tmp/note.txt",
+    insert_line=1,
+    new_str="inserted after line 1\n",
+))
+
+# Undo the most recent edit on a path.
+await desktop.sdk.edit(EditRequest(command=Command.undo_edit, path="/tmp/note.txt"))
+```
+
+### Helpers on `desktop.sdk`
+
+Beyond the four tool surfaces above, `desktop.sdk` exposes a few helpers used throughout this page:
+
+- `get_liveview_url()` — noVNC URL for live browser-based debugging. **Sync**, no `await`.
+- `ensure_chrome_cdp()` / `get_cdp_ws_url()` — start and discover Chrome DevTools inside the VM.
+- `open_url(url)` / `list_tabs()` — drive the VM's Chrome without leaving the SDK.
+- `login(session)` — run login flows for the other sim envs inside the VM's Chrome (see [Why login is different](#why-login-is-different)).
+
+See the full [reference card](#reference-card) at the bottom of this page.
+
+## Interaction cookbook
+
+Short recipes for common patterns. Each one assumes `desktop = session.desktop_env`.
+
+**1. Save a screenshot to disk.**
+
+```python
+import base64, os, tempfile
+
+shot = await desktop.sdk.computer(ComputerRequest(action=Action.screenshot))
+path = os.path.join(tempfile.gettempdir(), "vm_screenshot.png")
+with open(path, "wb") as f:
+    f.write(base64.b64decode(shot.base64_image))
+print(f"Screenshot saved: {path}")
+```
+
+**2. Open a terminal via the GUI and run a command.**
+
+```python
+import asyncio
+
+# Most Linux desktops bind ctrl+alt+t to "open terminal".
+await desktop.sdk.computer(ComputerRequest(action=Action.key, text="ctrl+alt+t"))
+await asyncio.sleep(2)   # give the terminal app a moment to focus.
+await desktop.sdk.computer(ComputerRequest(
+    action=Action.type, text="echo 'hello from the SDK!'\n",
+))
+```
+
+**3. Pre-seed state with `bash`, then verify with `bash`.**
+
+```python
+await desktop.sdk.bash(BashRequest(
+    command="echo 'benchmark input' > ~/Desktop/input.txt",
+))
+
+check = await desktop.sdk.bash(BashRequest(
+    command="test -s ~/Desktop/input.txt && echo OK || echo MISSING",
+))
+assert "OK" in (check.output or "")
+```
+
+**4. Copy a file from the VM back to your host (base64 trick).**
+
+There's no dedicated file-transfer primitive — `bash` + base64 is the idiom.
+
+```python
+import base64
+
+b64 = (await desktop.sdk.bash(
+    BashRequest(command="base64 -w0 /tmp/report.pdf"),
+)).output
+with open("report.pdf", "wb") as f:
+    f.write(base64.b64decode(b64))
+```
+
+**5. Copy a file from your host into the VM.**
+
+For small/text files, `edit` is the cleanest:
+
+```python
+await desktop.sdk.edit(EditRequest(
+    command=Command.create,
+    path="/tmp/config.json",
+    file_text='{"debug": true}\n',
+))
+```
+
+For larger or binary blobs, base64-encode on your side and decode in `bash`:
+
+```python
+import base64
+
+with open("dataset.tgz", "rb") as f:
+    encoded = base64.b64encode(f.read()).decode()
+
+await desktop.sdk.bash(BashRequest(
+    command=f"echo '{encoded}' | base64 -d > /tmp/dataset.tgz",
+))
+```
+
+**6. Drive the VM's Chrome from your laptop via Playwright over CDP.**
+
+```python
+from playwright.async_api import async_playwright
+
+await desktop.sdk.ensure_chrome_cdp()
+ws_url = await desktop.sdk.get_cdp_ws_url()
+
+async with async_playwright() as pw:
+    browser = await pw.chromium.connect_over_cdp(ws_url)
+    ctx = browser.contexts[0]
+    page = ctx.pages[0] if ctx.pages else await ctx.new_page()
+    await page.goto("https://example.com")
+    await page.get_by_role("link", name="More information").click()
+```
+
+## Agent loop skeleton
+
+The tool surface is designed so that any `{tool_name, tool_input}` dict coming out of a tool-calling model maps cleanly to one of `computer` / `bash` / `edit`. This section shows a provider-neutral dispatch function and a generic loop you can slot into whichever model SDK you use.
+
+### Dispatch — model tool call → VM call
+
+```python
+async def dispatch_tool(env, tool_name: str, tool_input: dict) -> dict:
+    """Map a model's tool call to a Plato VM call.
+
+    Returns a provider-neutral dict: {"type": "image"|"text", ...}.
+    Re-wrap it for whatever tool_result shape your model SDK expects.
+    """
+    if tool_name == "computer":
+        req = ComputerRequest(
+            action=Action(tool_input.get("action", "screenshot")),
+            coordinate=tool_input.get("coordinate"),
+            text=tool_input.get("text"),
+            scroll_direction=tool_input.get("scroll_direction"),
+            scroll_amount=tool_input.get("scroll_amount"),
+            duration=tool_input.get("duration"),
+        )
+        result = await env.sdk.computer(req)
+        if result.base64_image:
+            return {
+                "type": "image",
+                "media_type": "image/png",
+                "data": result.base64_image,
+            }
+        return {"type": "text", "text": result.output or result.error or "OK"}
+
+    if tool_name == "bash":
+        result = await env.sdk.bash(BashRequest(
+            command=tool_input["command"],
+            restart=tool_input.get("restart", False),
+            timeout=tool_input.get("timeout", 120),
+        ))
+        return {"type": "text", "text": (result.output or "") + (result.error or "")}
+
+    if tool_name == "edit":
+        result = await env.sdk.edit(EditRequest(
+            command=Command(tool_input["command"]),
+            path=tool_input["path"],
+            file_text=tool_input.get("file_text"),
+            old_str=tool_input.get("old_str"),
+            new_str=tool_input.get("new_str"),
+            insert_line=tool_input.get("insert_line"),
+            view_range=tool_input.get("view_range"),
+        ))
+        return {"type": "text", "text": result.output or result.error or "OK"}
+
+    raise ValueError(f"unknown tool: {tool_name}")
+```
+
+### Loop — screenshot, decide, dispatch, repeat
+
+```python
+async def run_agent(env, system_prompt: str, user_goal: str, max_turns: int = 50):
+    messages = init_messages(system_prompt, user_goal)  # your model SDK
+
+    for _ in range(max_turns):
+        response = await call_model(messages)           # your model SDK
+        if is_done(response):
+            return response
+
+        for tool_call in extract_tool_calls(response):
+            result = await dispatch_tool(env, tool_call.name, tool_call.input)
+            messages = append_tool_result(messages, tool_call.id, result)
+```
+
+The wrapping — `init_messages`, `call_model`, `extract_tool_calls`, `append_tool_result` — is whatever your model SDK provides. `dispatch_tool` is the only piece that talks to the Plato VM.
+
+## Why login is different
+
+Login has to land in the same browser the agent will use. For a desktop session that means inside the VM's Chrome, not a browser on your machine — and the two scenarios need genuinely different plumbing, so they're exposed as two separate calls.
+
+- **Non-desktop** (app sims only): `await session.login(browser)` takes a *local* Playwright `Browser` you created on your machine, drives it against each sim's public URL, and lands cookies in your local browser. The agent later drives that same Playwright browser.
+- **Desktop**: `await desktop.sdk.login(session)` reaches into the *VM's own Chrome* over CDP and runs each sim's login flow there. Cookies, localStorage, and session state land in the desktop VM's profile — which is what the agent will then use via `desktop.sdk.computer` / `.bash` / `.edit`.
+
+Different tooling on each side:
+
+- The non-desktop path requires you to instantiate Playwright on your host (`async_playwright()`, `browser = await p.chromium.launch()`), and it returns a `LoginResult` with Playwright `Page` objects your agent drives directly.
+- The desktop path requires a live VM with Chrome reachable over CDP (the SDK handles `ensure_chrome_cdp` for you), and returns nothing — the state is inside the VM. You don't need Playwright at all on your host.
+
+Trying to reuse a single call for both would mean always having to bring up a local browser you don't need (desktop) or exposing the VM's CDP proxy to a local driver you don't want (non-desktop), so they stay split.
+
+### Branching on `session.desktop_env`
+
+Pick the right path by checking `session.desktop_env` immediately after session creation — it's `None` for non-desktop sessions and the desktop `Environment` otherwise:
+
+```python
+session = await plato.sessions.create(task="<test-case-id>")
+
+desktop = session.desktop_env
+if desktop is not None:
+    # Desktop path: login runs inside the VM's Chrome.
+    await desktop.sdk.login(session)
+else:
+    # Non-desktop path: you supply a local Playwright browser.
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        login_result = await session.login(browser)
+        # ... agent drives login_result.pages[alias] ...
+```
+
+<Warning>
+`session.login(browser)` raises on sessions that contain a desktop env. Always branch on `session.desktop_env` first.
+</Warning>
+
+Two safety rails worth knowing:
+
+- `desktop.sdk.login(session)` is a no-op on desktop-only sessions (nothing else has an `artifact_id` to log into), so it's always safe to call when `session.desktop_env` is set.
+- `session.login(browser)` is only valid when `session.desktop_env is None`; the branch above is the canonical way to call it.
+
+## What stays the same
+
+Every other session/env operation behaves identically to a non-desktop session:
+
+- `session.reset()` captures mutation baselines across all envs, including the desktop.
+- `session.get_state()` flushes and returns mutation state from all envs.
+- `session.evaluate()` scores testcases: MUTATION scoring uses the desktop VM's mutation stream, OUTPUT scoring uses the agent's output.
+- `session.snapshot()` / `env.snapshot()` work on desktop envs.
+- Session close, heartbeats, and serialization are unchanged.
+
+## End-to-end example
+
+Prereq: export your API key so the SDK picks it up.
+
+```bash
+export PLATO_API_KEY=your_api_key_here
+```
+
+Or pass it explicitly: `AsyncPlato(api_key="...")`.
+
+The script below creates a session with a desktop artifact, exercises each tool surface in turn (status, bash, screenshot, click, key, type, edit), prints the liveview URL so you can watch, and waits until you hit Ctrl+C before flushing state and cleaning up.
+
+<Note>
+`session.evaluate()` requires a linked testcase. This example uses raw artifact IDs, so there's nothing to score against — it calls `session.get_state()` to flush and inspect mutations instead. To run evaluation, create the session from a task with `plato.sessions.create(task="<test-case-id>")` — see the [testcase variant](#testcase-variant-with-evaluate) below.
+</Note>
+
+```python
+import asyncio
+import base64
+import os
+import tempfile
+
+from plato.v2 import AsyncPlato, Env
+from plato.sims.ubuntu_vm.models import (
+    Action,
+    BashRequest,
+    Command,
+    ComputerRequest,
+    EditRequest,
+)
+
+# Artifact IDs. The desktop artifact comes from a simulator flagged with
+# `is_desktop=True`; the app artifact is any sim you want logged-in inside
+# the desktop VM's Chrome.
+DESKTOP_ARTIFACT_ID = "<desktop-artifact-id>"
+APP_ARTIFACT_ID = "<app-artifact-id>"
+
+
+async def main():
+    api_key = os.environ.get("PLATO_API_KEY")
+    if not api_key:
+        raise SystemExit("Set PLATO_API_KEY in your environment first.")
+
+    plato = AsyncPlato(api_key=api_key)
+
+    session = await plato.sessions.create(envs=[
+        Env.artifact(DESKTOP_ARTIFACT_ID, alias="desktop"),
+        Env.artifact(APP_ARTIFACT_ID, alias="app"),
+    ])
+
+    try:
+        desktop = session.desktop_env
+        assert desktop, "expected a desktop env in this session"
+
+        # Log into `app` via the desktop VM's own Chrome.
+        await desktop.sdk.login(session)
+
+        # Reset AFTER login so mutation baselines include the logged-in state.
+        await session.reset()
+
+        liveview = desktop.sdk.get_liveview_url()
+        print("=" * 60)
+        print(f"Session:  {session.session_id}")
+        print(f"Liveview: {liveview}")
+        print("Open the liveview to watch the VM while the script runs.")
+        print("=" * 60)
+
+        # 1. Check VM status.
+        status = await desktop.sdk.status()
+        print(
+            f"\n[1] Status: {status.status}, "
+            f"resolution: {status.resolution.width}x{status.resolution.height}"
+        )
+
+        # 2. Run a shell command on the VM.
+        result = await desktop.sdk.bash(BashRequest(command="uname -a"))
+        print(f"\n[2] Bash output:\n    {(result.output or '').strip()}")
+
+        # 3. Take a screenshot and save it locally.
+        shot = await desktop.sdk.computer(ComputerRequest(action=Action.screenshot))
+        shot_path = os.path.join(tempfile.gettempdir(), "vm_demo.png")
+        with open(shot_path, "wb") as f:
+            f.write(base64.b64decode(shot.base64_image))
+        print(f"\n[3] Screenshot saved to {shot_path}")
+
+        # 4. Move + click near the middle of the screen.
+        await desktop.sdk.computer(ComputerRequest(
+            action=Action.left_click, coordinate=[640, 360],
+        ))
+        print("\n[4] Clicked center of screen")
+
+        # 5. Open a terminal via the GUI and type into it.
+        await desktop.sdk.computer(ComputerRequest(
+            action=Action.key, text="ctrl+alt+t",
+        ))
+        await asyncio.sleep(2)
+        await desktop.sdk.computer(ComputerRequest(
+            action=Action.type, text="echo 'hello from the SDK!'\n",
+        ))
+        print("[5] Typed into the terminal")
+
+        # 6. Create and read back a file via the edit endpoint.
+        await desktop.sdk.edit(EditRequest(
+            command=Command.create,
+            path="/tmp/demo.txt",
+            file_text="Hello, world!\n",
+        ))
+        view = await desktop.sdk.edit(EditRequest(
+            command=Command.view, path="/tmp/demo.txt",
+        ))
+        print(f"\n[6] File contents:\n    {(view.output or '').strip()}")
+
+        print("\nPress Ctrl+C to flush state and exit.")
+        try:
+            while True:
+                await asyncio.sleep(5)
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            print("\nCancel received — flushing state...")
+
+        # Flush and inspect state captured since `session.reset()`.
+        # (For testcase-backed sessions, swap this for `session.evaluate()`.)
+        state = await session.get_state()
+        for job_id, env_state in state.results.items():
+            print(f"{job_id}: success={env_state.success}")
+    finally:
+        await session.close()
+        await plato.close()
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
+```
+
+### Testcase variant (with `evaluate`)
+
+When the session is created from a testcase, the envs (including the desktop artifact) come from the task definition and scoring is wired up automatically:
+
+```python
+session = await plato.sessions.create(task="<test-case-id>")
+
+desktop = session.desktop_env
+if desktop:
+    await desktop.sdk.login(session)
+
+await session.reset()
+
+# ... agent / manual interaction happens here ...
+
+result = await session.evaluate()
+print(f"success: {result.success}  score: {result.score}")
+```
+
+## Integrating into an existing non-desktop flow
+
+Already have code that works against non-desktop sims? Keep a single code path that works for both by branching on `session.desktop_env`:
+
+```python
+from playwright.async_api import async_playwright
+
+session = await plato.sessions.create(task=task_id)
+await session.reset()
+
+desktop = session.desktop_env
+
+if desktop:
+    # Desktop flow — login runs inside the VM's Chrome.
+    await desktop.sdk.login(session)
+    # Agent drives the desktop VM via desktop.sdk.computer / .bash / .edit
+    ...
+else:
+    # Classic non-desktop flow — local browser drives each app sim.
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        login_result = await session.login(browser)
+        # Agent uses login_result.pages[alias]
+        ...
+        await login_result.context.close()
+        await browser.close()
+
+# Evaluation is identical either way.
+result = await session.evaluate()
+```
+
+Two calls to keep straight:
+
+- `session.login(browser)` — local Playwright, non-desktop only.
+- `desktop.sdk.login(session)` — in-VM Chrome, desktop sessions.
+
+## Optional: installing extra tooling on the VM
+
+Most of the time you'll be running evaluations against a sim the VM was built for, so you won't need to touch the VM's own software stack. But occasionally you'll want **extra tooling alongside the agent** — a screen recorder, a trace collector, a listener that pipes logs back to your host, or a CLI you want to shell out to during scoring. The pattern below is how you add it.
+
+The concrete scenario records a short video of the VM with `ffmpeg`, because that touches every tool surface — `bash` to install, `status` to read the display size, `bash` to run the recorder in the background and stop it cleanly, and `bash` + base64 to pull the resulting file back to your host. Swap `ffmpeg` for whatever you actually need; the shape is the same:
+
+1. `bash` — detect whether the package is already there, and `apt-get install` it if not.
+2. `status` — look up the VM's actual resolution (only needed for tools that capture the screen).
+3. `bash` — run the tool in the background, let the agent do its thing, then shut it down cleanly.
+4. `bash` — base64-encode the resulting file and pull it back to the host (no dedicated file-transfer primitive is needed).
+
+Each step is a standalone helper you can lift into your own code.
+
+### 1. Install the package with `bash`
+
+Snapshot-restored VMs sometimes have a stale system clock, which makes `apt-get update` fail with "Release file is not valid yet" errors. The `Acquire::Check-Valid-Until=false` / `Check-Date=false` flags bypass that check so install works on any freshly-spun VM. The same `install_package` helper works for any apt package — swap `ffmpeg` for `libreoffice`, `jq`, `sqlite3`, whatever you need.
+
+```python
+async def install_package(desktop, package: str, binary: str | None = None):
+    """Idempotently install an apt package inside the VM."""
+    probe = binary or package
+
+    check = await desktop.sdk.bash(BashRequest(
+        command=f"which {probe} || echo MISSING",
+    ))
+    if "MISSING" not in (check.output or ""):
+        return
+
+    install = await desktop.sdk.bash(BashRequest(
+        command=(
+            "DEBIAN_FRONTEND=noninteractive "
+            "apt-get -o Acquire::Check-Valid-Until=false "
+            "-o Acquire::Check-Date=false update -qq && "
+            "DEBIAN_FRONTEND=noninteractive "
+            f"apt-get -o Acquire::Check-Valid-Until=false "
+            f"-o Acquire::Check-Date=false install -y -qq {package}"
+        ),
+        timeout=300,
+    ))
+
+    verify = await desktop.sdk.bash(BashRequest(command=f"which {probe}"))
+    if not (verify.output or "").strip():
+        raise RuntimeError(
+            f"{package} install failed: {install.error or install.output}"
+        )
+
+
+await install_package(desktop, "ffmpeg")
+```
+
+### 2. Look up the VM's resolution with `status`
+
+Tools that capture the screen (ffmpeg, `import`, screenshot daemons) need the actual display size. `status()` is the source of truth — don't hardcode it.
+
+```python
+status = await desktop.sdk.status()
+w, h = status.resolution.width, status.resolution.height
+```
+
+### 3. Run the tool with `bash` — kick it off, let work happen, stop cleanly
+
+Start the long-running process in the background, perform whatever agent/user work needs to be captured, then shut it down. For `ffmpeg` specifically, send `SIGINT` — **never** `SIGKILL`. Only SIGINT lets ffmpeg flush the MP4 MOOV atom; a killed recording is unplayable. The same pattern (`nohup ... &` + signal-based stop) works for any process you want to run between two SDK calls.
+
+```python
+# 3a. Start ffmpeg in the background, matching the VM's real resolution.
+await desktop.sdk.bash(BashRequest(command=(
+    "pkill -9 -f 'ffmpeg.*x11grab' 2>/dev/null; "
+    f"DISPLAY=:0 nohup ffmpeg -y -f x11grab -video_size {w}x{h} -framerate 10 "
+    f"-i :0 -c:v libx264 -preset ultrafast -pix_fmt yuv420p "
+    f"/tmp/session.mp4 > /tmp/ffmpeg.log 2>&1 &"
+)))
+
+# 3b. Whatever you want captured happens here — agent loop, manual interaction,
+# a sequence of `computer` / `bash` / `edit` calls, etc.
+
+# 3c. Stop cleanly. SIGINT gives ffmpeg a chance to finalize the file.
+await desktop.sdk.bash(BashRequest(command=(
+    "pkill -INT -f 'ffmpeg.*x11grab'; "
+    "for i in 1 2 3 4 5; do sleep 1; pgrep -f 'ffmpeg.*x11grab' || break; done"
+)))
+```
+
+### 4. Pull the resulting file back to the host with `bash` + base64
+
+There's no dedicated "download a file" primitive on `desktop.sdk`, and you don't need one — `bash` + base64 turns any file on the VM into bytes on your host. The same three lines work for screen recordings, PDFs, logs, CSVs, compiled binaries, anything.
+
+```python
+import base64
+
+b64 = (await desktop.sdk.bash(
+    BashRequest(command="base64 -w0 /tmp/session.mp4"),
+)).output
+with open("session.mp4", "wb") as f:
+    f.write(base64.b64decode(b64))
+```
+
+## Common pitfalls
+
+- Don't call `session.login(browser)` on a session with a desktop env; it raises. Branch on `session.desktop_env`.
+- Call `session.reset()` **after** `desktop.sdk.login(session)` so the logged-in state is part of the mutation baseline.
+- When stopping an ffmpeg recording, send `SIGINT` (`pkill -INT`), never `SIGKILL`. Only SIGINT lets ffmpeg write out the MP4 MOOV atom; a killed recording leaves an unplayable file.
+- `desktop.sdk.get_liveview_url()` is sync — no `await`. Everything else on `desktop.sdk` is async.
+- There's no dedicated file-transfer primitive. Move files by base64-encoding through `bash` (VM → host) or `edit` / `bash` with base64 decode (host → VM); see the [cookbook](#interaction-cookbook) above.
+
+## Reference card
+
+### Methods on `desktop.sdk`
+
+| Method | Async | Purpose |
+|---|---|---|
+| `status()` | yes | Health check + display resolution |
+| `get_liveview_url()` | no | noVNC URL for browser-based debugging |
+| `ensure_chrome_cdp(port=9224, timeout=60)` | yes | Start/confirm Chrome CDP inside the VM |
+| `get_cdp_ws_url(port=9224)` | yes | Chrome DevTools WebSocket URL (for external Playwright) |
+| `open_url(url)` | yes | Open a URL in a new tab inside the VM's Chrome |
+| `list_tabs()` | yes | Enumerate the VM's open Chrome tabs |
+| `login(session)` | yes | Run login flows for the other sim envs inside the VM's Chrome |
+| `computer(ComputerRequest)` | yes | Screenshot / mouse / keyboard actions |
+| `bash(BashRequest)` | yes | Shell command |
+| `edit(EditRequest)` | yes | File view / create / str_replace / insert / undo |
+
+### `Action` values (for `ComputerRequest.action`)
+
+| Group | Values |
+|---|---|
+| Screenshot | `screenshot` |
+| Pointer | `mouse_move`, `left_click`, `right_click`, `middle_click`, `double_click`, `triple_click`, `left_click_drag`, `left_mouse_down`, `left_mouse_up` |
+| Keyboard | `type`, `key`, `hold_key` |
+| Scroll | `scroll` (pair with `ScrollDirection.up` / `.down` / `.left` / `.right` and `scroll_amount`) |
+| Utility | `wait` (pair with `duration`), `cursor_position` |
+
+### `Command` values (for `EditRequest.command`)
+
+`view` (with optional `view_range=[start, end]`), `create` (with `file_text`), `str_replace` (with `old_str` + `new_str`), `insert` (with `insert_line` + `new_str`), `undo_edit`.

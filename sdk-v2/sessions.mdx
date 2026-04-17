@@ -209,6 +209,27 @@ async with async_playwright() as p:
     await browser.close()
 ```
 
+## Desktop Login
+
+Sessions that include a desktop VM (a simulator with `is_desktop=True`) use a different login path. Instead of driving a local Playwright browser, login runs inside the desktop VM's own Chrome so cookies and session state land where the agent will actually operate.
+
+```python
+desktop = session.desktop_env
+if desktop:
+    # Logs every other sim env into the VM's Chrome.
+    await desktop.sdk.login(session)
+else:
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        await session.login(browser)
+```
+
+<Warning>
+`session.login(browser)` raises on sessions that contain a desktop env. Always branch on `session.desktop_env` when your code needs to support both kinds of task.
+</Warning>
+
+Full guide: [Desktop VMs](/sdk-v2/desktop-vms).
+
 ## Session Properties
 
 | Property | Type | Description |
@@ -216,3 +237,4 @@ async with async_playwright() as p:
 | `session_id` | `str` | Unique session identifier |
 | `task_public_id` | `str \| None` | Task ID if created from task |
 | `envs` | `list[Environment]` | List of environments |
+| `desktop_env` | `Environment \| None` | First env with `is_desktop=True`, or `None` |

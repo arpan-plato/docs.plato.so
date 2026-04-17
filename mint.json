@@ -43,7 +43,8 @@
       "pages": [
         "sdk-v2/overview",
         "sdk-v2/sessions",
-        "sdk-v2/environments"
+        "sdk-v2/environments",
+        "sdk-v2/desktop-vms"
       ]
     },
     {
