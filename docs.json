@@ -1,0 +1,66 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "plato.so",
+  "colors": {
+    "primary": "#333",
+    "light": "#333",
+    "dark": "#333"
+  },
+  "favicon": "/favicon.svg",
+  "navigation": {
+    "groups": [
+      {
+        "group": "Get Started",
+        "pages": [
+          "quickstart"
+        ]
+      },
+      {
+        "group": "Core SDK",
+        "pages": [
+          "concepts/overview",
+          "sdk-v2/sessions",
+          "sdk-v2/environments",
+          "sdk-v2/examples"
+        ]
+      },
+      {
+        "group": "Computer Use",
+        "pages": [
+          "computer-use/quickstart",
+          "computer-use/tools",
+          "computer-use/agents"
+        ]
+      }
+    ]
+  },
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
+  },
+  "appearance": {
+    "default": "light",
+    "strict": true
+  },
+  "background": {
+    "decoration": "grid",
+    "color": {
+      "light": "#fafafa"
+    }
+  },
+  "navbar": {
+    "primary": {
+      "type": "button",
+      "label": "Plato Dashboard",
+      "href": "https://plato.so"
+    }
+  },
+  "footer": {
+    "socials": {
+      "x": "https://x.com/RobFarlow",
+      "github": "https://github.com/useplato",
+      "linkedin": "https://www.linkedin.com/in/robfarlow"
+    }
+  }
+}

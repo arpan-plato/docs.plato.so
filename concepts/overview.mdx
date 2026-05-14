@@ -1,0 +1,90 @@
+---
+title: 'Concepts'
+description: 'The mental model behind Plato'
+---
+
+Read this once before writing much code. The other SDK pages show *how* to call things — this one explains *what* they are.
+
+## Sims, artifacts, environments
+
+A **sim** (simulator) is a pre-built VM image of an application — a CRM, a Git server, a wiki, a Linux desktop. Each sim has a name (e.g. `espocrm`, `ubuntu-vm`), one or more **artifacts** (each artifact is a version of the sim), and an `is_desktop` flag.
+
+An **environment** ("env") is a single running VM. One artifact → one env. You declare envs with the `Env` helper:
+
+```python
+Env.simulator("espocrm")           # use the sim's example version
+Env.artifact("artifact-abc123")    # pin to a specific version
+```
+
+`Env.simulator(name)` boots whatever artifact is configured as the sim's example version. Not every sim has one set, and the example can change underneath you. For reproducible runs, grab an artifact ID from the sim's **Versions** list in the [Plato dashboard](https://plato.so) and use `Env.artifact(...)`.
+
+## Sessions
+
+A **session** holds one or more envs. It exists so envs can be reset, evaluated, and torn down as a unit — and so they can reach each other on a private WireGuard mesh at `{alias}.plato.internal`.
+
+```python
+session = plato.sessions.create(envs=[Env.simulator("espocrm")])  # manual reset
+session = plato.sessions.create(testcase="tc_abc123")             # auto-resets
+```
+
+The SDK keeps the session alive in the background. Always `session.close()` when you're done.
+
+## Computer use envs
+
+A **computer use env** (a.k.a. desktop VM) is any sim with `is_desktop=True` — currently `ubuntu-vm`. Instead of a webapp the agent reaches over a public URL, the agent operates the VM itself: pixels, keyboard, shell, files. Same session and environment APIs as everything else; the only difference is `env.sdk`, which on a desktop env exposes `status / computer / bash / edit / login`. See [Computer Use](/computer-use/quickstart).
+
+## The lifecycle
+
+Every Plato run follows the same five steps:
+
+1. **`session.reset()`** — initializes mutation logging on each sim. Everything that happens after this gets captured. (Sessions created from `testcase=` are auto-reset.)
+2. **Login** — `desktop.sdk.login(session)` for desktop sessions, `session.login(browser)` for app-sim sessions. Login mutations are captured by the stream.
+3. **Run the agent** — drive the env however the task requires.
+4. **`session.get_state()`** — *(optional)* peek at mutations mid-run.
+5. **`session.evaluate()`** — score the session against its linked testcase.
+
+For a working example: [Core SDK → Examples](/sdk-v2/examples).
+
+## Mutations
+
+A **mutation** is a tracked change to the env (a database write, a file change) since the last `reset()`. The mutation stream is what `evaluate()` reads when scoring MUTATION-style testcases.
+
+`session.get_state()` flushes pending writes and returns the current mutation set, keyed by job id. You don't usually need to call this directly — `evaluate()` calls it internally.
+
+## Testcases and scoring
+
+A **testcase** is a pre-defined task: prompt, target sim(s), starting artifacts, scoring config. They live in your Plato tenant with public IDs like `"tc_abc123"`.
+
+`session.evaluate()` scores the session against the linked testcase. Two scoring modes; a testcase can use one or both:
+
+- **MUTATION** — the testcase declares the database/file changes a successful run must produce. `evaluate()` reads the env's mutation stream and checks them.
+- **OUTPUT** — the agent must return a JSON object matching a schema declared on the testcase. Pass it as `evaluate(value=...)`.
+
+Sessions created from `testcase=` are linked automatically. Sessions created from `envs=` aren't until you call `session.link_testcase("tc_abc123")`.
+
+## Public URLs vs liveview
+
+Two different "open this in a browser" affordances:
+
+- **`session.get_public_url()`** — for app sims. Returns `dict[alias, url]` mapping each env to a browser-accessible URL. The agent reaches the app this way.
+- **`desktop.sdk.get_liveview_url()`** — for desktop VMs. Returns a noVNC URL you open to *watch* the VM in real time. Useful for debugging an agent loop.
+
+## Sync vs async
+
+Every API has a sync (`Plato`) and async (`AsyncPlato`) form — same names, just `await` the calls. One exception: `desktop.sdk.get_liveview_url()` is always sync.
+
+## Glossary
+
+| Term | What it means |
+|---|---|
+| **Sim** | A pre-built VM image (e.g. `espocrm`, `ubuntu-vm`). |
+| **Artifact** | A specific version of a sim — what an env actually boots from. |
+| **Env** | A single running VM in a session. |
+| **Session** | A container for one or more envs, with shared lifecycle and network. |
+| **Computer use env / desktop VM** | An env where `is_desktop=True` — agent operates the VM, not a webapp. |
+| **Mutation** | A tracked change (db write, file change) since the last reset. |
+| **Reset** | Initialize mutation logging on each sim. |
+| **Testcase** | A pre-defined task: prompt + envs + scoring config. |
+| **Evaluate** | Score a session against its linked testcase. |
+| **Liveview** | noVNC URL to watch a desktop VM in real time. |
+| **Mesh** | Per-session WireGuard network connecting all envs at `{alias}.plato.internal`. |

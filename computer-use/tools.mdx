@@ -1,0 +1,222 @@
+---
+title: 'Tools'
+description: 'status, computer, bash, edit — the four tool surfaces'
+---
+
+A computer use env exposes four tool surfaces on `env.sdk`. Every call is one HTTP round-trip to the VM, so the same calls work from your laptop, a CI box, or another VM.
+
+```python
+from plato.sims.ubuntu_vm.models import (
+    Action,
+    BashRequest,
+    Command,
+    ComputerRequest,
+    EditRequest,
+    ScrollDirection,
+)
+```
+
+All examples below use `desktop = session.desktop_env` and the sync `Plato` client. For async, prefix with `await` (except `get_liveview_url()`, which is always sync).
+
+## `status()`
+
+Health and display geometry.
+
+```python
+status = desktop.sdk.status()
+print(status.status)                                       # "ready"
+print(status.resolution.width, status.resolution.height)   # e.g. 1280 720
+```
+
+Use the resolution to size your agent's tool schema (most computer-use models want `display_width_px` / `display_height_px` to match the VM's actual resolution) and as bounds for coordinate-based actions.
+
+## `computer(ComputerRequest)`
+
+Pixels, mouse, keyboard. `ComputerRequest` accepts `action`, `coordinate`, `text`, `scroll_direction`, `scroll_amount`, `duration`. Results come back as a `ToolResult` with `base64_image` (screenshots), `output`, and `error`.
+
+### Screenshot
+
+```python
+shot = desktop.sdk.computer(ComputerRequest(action=Action.screenshot))
+# shot.base64_image is a base64-encoded PNG.
+```
+
+### Click and drag
+
+```python
+# Most computer-use models send a mouse_move before every click.
+desktop.sdk.computer(ComputerRequest(
+    action=Action.mouse_move, coordinate=[500, 300],
+))
+desktop.sdk.computer(ComputerRequest(
+    action=Action.left_click, coordinate=[640, 360],
+))
+
+# Click-and-drag.
+desktop.sdk.computer(ComputerRequest(
+    action=Action.left_click_drag, coordinate=[800, 400],
+))
+
+# Fine-grained: down → move → up.
+desktop.sdk.computer(ComputerRequest(action=Action.left_mouse_down, coordinate=[100, 100]))
+desktop.sdk.computer(ComputerRequest(action=Action.mouse_move, coordinate=[300, 300]))
+desktop.sdk.computer(ComputerRequest(action=Action.left_mouse_up, coordinate=[300, 300]))
+```
+
+Other click variants — `right_click`, `middle_click`, `double_click`, `triple_click` (selects a whole line of text) — take the same `coordinate`.
+
+### Keyboard
+
+```python
+desktop.sdk.computer(ComputerRequest(action=Action.type, text="hello world"))
+
+# Single keys and shortcuts use xdotool syntax.
+desktop.sdk.computer(ComputerRequest(action=Action.key, text="Return"))
+desktop.sdk.computer(ComputerRequest(action=Action.key, text="ctrl+a"))
+desktop.sdk.computer(ComputerRequest(action=Action.key, text="ctrl+shift+Tab"))
+
+# Hold a key for N seconds.
+desktop.sdk.computer(ComputerRequest(action=Action.hold_key, text="shift", duration=1.0))
+```
+
+### Scroll
+
+```python
+desktop.sdk.computer(ComputerRequest(
+    action=Action.scroll,
+    coordinate=[640, 400],
+    scroll_direction=ScrollDirection.down,   # .up / .down / .left / .right
+    scroll_amount=5,                          # number of scroll "ticks"
+))
+```
+
+### Wait and cursor
+
+```python
+desktop.sdk.computer(ComputerRequest(action=Action.wait, duration=0.5))
+
+pos = desktop.sdk.computer(ComputerRequest(action=Action.cursor_position))
+# pos.output contains the coordinates as text.
+```
+
+### `Action` values
+
+| Group | Values |
+|---|---|
+| Screenshot | `screenshot` |
+| Pointer | `mouse_move`, `left_click`, `right_click`, `middle_click`, `double_click`, `triple_click`, `left_click_drag`, `left_mouse_down`, `left_mouse_up` |
+| Keyboard | `type`, `key`, `hold_key` |
+| Scroll | `scroll` (with `ScrollDirection` + `scroll_amount`) |
+| Utility | `wait` (with `duration`), `cursor_position` |
+
+## `bash(BashRequest)`
+
+Shell access inside the VM. `output` is stdout, `error` is stderr.
+
+```python
+# Plain command.
+result = desktop.sdk.bash(BashRequest(command="ls -la ~"))
+print(result.output)
+
+# Inspect failures.
+result = desktop.sdk.bash(BashRequest(command="cat /does/not/exist"))
+if result.error:
+    print("failed:", result.error)
+
+# Multi-line / pipelines.
+result = desktop.sdk.bash(BashRequest(command=(
+    "set -euo pipefail\n"
+    "mkdir -p /tmp/work\n"
+    "echo -e 'alpha\\nbeta' | sort -r > /tmp/work/out.txt\n"
+    "cat /tmp/work/out.txt"
+)))
+
+# Custom timeout (default 120s).
+result = desktop.sdk.bash(BashRequest(command="sleep 3 && echo done", timeout=10))
+
+# Reset the underlying shell if it got wedged.
+desktop.sdk.bash(BashRequest(command="true", restart=True))
+```
+
+## `edit(EditRequest)`
+
+Structured file ops. Safer than `bash` for file content — no quoting hell, and `undo_edit` is built in.
+
+```python
+# Create a new file.
+desktop.sdk.edit(EditRequest(
+    command=Command.create,
+    path="/tmp/note.txt",
+    file_text="hello\nworld\n",
+))
+
+# View all lines (or a 1-indexed inclusive range).
+desktop.sdk.edit(EditRequest(command=Command.view, path="/tmp/note.txt"))
+desktop.sdk.edit(EditRequest(command=Command.view, path="/etc/hosts", view_range=[1, 20]))
+
+# Unique-match in-place replace (safer than sed).
+desktop.sdk.edit(EditRequest(
+    command=Command.str_replace,
+    path="/tmp/note.txt",
+    old_str="hello",
+    new_str="howdy",
+))
+
+# Insert AFTER a specific line (0 = top of file).
+desktop.sdk.edit(EditRequest(
+    command=Command.insert,
+    path="/tmp/note.txt",
+    insert_line=1,
+    new_str="inserted after line 1\n",
+))
+
+# Undo the most recent edit on a path.
+desktop.sdk.edit(EditRequest(command=Command.undo_edit, path="/tmp/note.txt"))
+```
+
+### `Command` values
+
+`view` (with optional `view_range=[start, end]`), `create` (with `file_text`), `str_replace` (with `old_str` + `new_str`), `insert` (with `insert_line` + `new_str`), `undo_edit`.
+
+## Helpers on `desktop.sdk`
+
+Beyond the four tool surfaces, `desktop.sdk` exposes helpers used elsewhere in these docs:
+
+| Method | Sync? | Purpose |
+|---|---|---|
+| `status()` | async-aware | Health + display resolution |
+| `get_liveview_url()` | always sync | noVNC URL for browser-based debugging |
+| `ensure_chrome_cdp(port=9224, timeout=60)` | async-aware | Start/confirm Chrome CDP inside the VM |
+| `get_cdp_ws_url(port=9224)` | async-aware | Chrome DevTools WebSocket URL (for external Playwright) |
+| `open_url(url)` | async-aware | Open a URL in a new tab inside the VM's Chrome |
+| `list_tabs()` | async-aware | Enumerate the VM's open Chrome tabs |
+| `login(session)` | async-aware | Run login flows for the other sim envs inside the VM's Chrome — see [Login](/computer-use/login) |
+| `computer(ComputerRequest)` | async-aware | Screenshot / mouse / keyboard |
+| `bash(BashRequest)` | async-aware | Shell command |
+| `edit(EditRequest)` | async-aware | View / create / str_replace / insert / undo |
+
+"Async-aware" means: sync when you got the env from `Plato`, async when you got it from `AsyncPlato`. `get_liveview_url()` is always sync.
+
+## Driving Chrome from your host
+
+If you'd rather drive the VM's Chrome with Playwright on your laptop than send `computer` calls, attach over CDP:
+
+```python
+from playwright.sync_api import sync_playwright
+
+desktop.sdk.ensure_chrome_cdp()
+ws_url = desktop.sdk.get_cdp_ws_url()
+
+with sync_playwright() as p:
+    browser = p.chromium.connect_over_cdp(ws_url)
+    ctx = browser.contexts[0]
+    page = ctx.pages[0] if ctx.pages else ctx.new_page()
+    page.goto("https://example.com")
+```
+
+## Pitfalls
+
+- `get_liveview_url()` is sync — never `await` it.
+- There's no dedicated file-transfer primitive. Use `edit(create)` or `bash` + base64 to move files in either direction (see [Agent loop → Cookbook](/computer-use/agents#cookbook)).
+- `bash` runs as the VM's session user, not root. `sudo` is available.
+- `BashRequest` and `EditRequest` accept the same `restart` / `undo_edit` semantics whether you call them from sync or async — only the `await` differs.

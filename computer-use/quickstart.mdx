@@ -1,0 +1,174 @@
+---
+title: 'Computer Use Quickstart'
+description: 'Drive a full Linux desktop VM — mouse, keyboard, shell, files'
+---
+
+A **computer use env** is a Plato VM running a full Linux desktop (Xvfb, window manager, Chrome, real filesystem). The agent operates the VM directly: pixels, keyboard, shell, files. Currently the desktop sim is `ubuntu-vm` (any sim with `is_desktop=True` qualifies).
+
+The session and environment APIs are the same as any other env. The only thing that's different is `env.sdk`, which on a desktop env exposes four tool surfaces: `status`, `computer`, `bash`, `edit` — plus `login` for getting cookies into the VM's Chrome.
+
+<Note>
+Requires `plato-sdk-v2 >= 2.61.4`.
+</Note>
+
+## Hello desktop
+
+```python
+import base64
+import os
+import tempfile
+import time
+
+from plato.sims.ubuntu_vm.models import (
+    Action,
+    BashRequest,
+    Command,
+    ComputerRequest,
+    EditRequest,
+)
+from plato.v2 import Env, Plato
+
+ARTIFACT_ID = "fc09c7d7-c639-49e8-8a59-8e11f9594e8c"  # ubuntu-vm test artifact
+
+
+def main():
+    plato = Plato()
+    session = plato.sessions.create(envs=[Env.artifact(ARTIFACT_ID)])
+    env = session.envs[0]
+    print(f"Liveview: {env.sdk.get_liveview_url()}")
+
+    try:
+        # 1. Check VM status.
+        status = env.sdk.status()
+        print(
+            f"\nStatus: {status.status}, "
+            f"resolution: {status.resolution.width}x{status.resolution.height}"
+        )
+
+        # 2. Run a bash command.
+        result = env.sdk.bash(BashRequest(command="uname -a"))
+        print(f"\nBash output:\n  {result.output.strip()}")
+
+        # 3. Take a screenshot.
+        shot = env.sdk.computer(ComputerRequest(action=Action.screenshot))
+        path = os.path.join(tempfile.gettempdir(), "ubuntu_vm_demo.png")
+        with open(path, "wb") as f:
+            f.write(base64.b64decode(shot.base64_image))
+        print(f"\nScreenshot saved to {path}")
+
+        # 4. Move the mouse and click.
+        env.sdk.computer(
+            ComputerRequest(action=Action.left_click, coordinate=[640, 360]),
+        )
+        print("\nClicked center of screen")
+
+        # 5. Open a terminal via the GUI and type into it.
+        env.sdk.computer(ComputerRequest(action=Action.key, text="ctrl+alt+t"))
+        time.sleep(2)
+        env.sdk.computer(
+            ComputerRequest(action=Action.type, text="echo 'Hello from the SDK!'\n"),
+        )
+        print("Typed into terminal")
+
+        # 6. Create and read a file via the edit endpoint.
+        env.sdk.edit(
+            EditRequest(
+                command=Command.create,
+                path="/tmp/demo.txt",
+                file_text="Hello, world!\n",
+            ),
+        )
+        view = env.sdk.edit(EditRequest(command=Command.view, path="/tmp/demo.txt"))
+        print(f"\nFile contents:\n  {view.output.strip()}")
+    finally:
+        env.sdk.close()
+        session.close()
+        plato.close()
+
+
+if __name__ == "__main__":
+    main()
+```
+
+What this script touches:
+
+1. `status()` — health and display resolution.
+2. `bash` — shell command on the VM.
+3. `computer(screenshot)` — get a PNG of the desktop, base64-encoded.
+4. `computer(left_click)` — point + click.
+5. `computer(key)` + `computer(type)` — keyboard input.
+6. `edit(create)` + `edit(view)` — structured file ops.
+
+## Picking the env
+
+Three ways to get a desktop env in your session:
+
+```python
+# 1. The ubuntu-vm sim's example version.
+session = plato.sessions.create(envs=[Env.simulator("ubuntu-vm")])
+
+# 2. A specific desktop artifact.
+session = plato.sessions.create(envs=[Env.artifact("<desktop-artifact-id>")])
+
+# 3. From a testcase that includes a desktop env.
+session = plato.sessions.create(testcase="<test-case-id>")
+```
+
+In a multi-env session, use `session.desktop_env` to grab the desktop:
+
+```python
+session = plato.sessions.create(envs=[
+    Env.simulator("ubuntu-vm", alias="desktop"),
+    Env.simulator("espocrm", alias="crm"),
+])
+
+desktop = session.desktop_env       # Environment | None
+if desktop:
+    desktop.sdk.status()
+```
+
+`session.desktop_env` returns the first env with `is_desktop=True`, or `None` if there isn't one.
+
+## Liveview
+
+`env.sdk.get_liveview_url()` returns a noVNC URL you can open in a browser to watch the VM in real time. Useful for debugging an agent loop.
+
+```python
+print(env.sdk.get_liveview_url())
+```
+
+This one is **sync** — no `await` even on `AsyncPlato`.
+
+## Async
+
+The async client mirrors the sync one. Swap `Plato` → `AsyncPlato` and `await` everything *except* `get_liveview_url()`:
+
+```python
+from plato.v2 import AsyncPlato, Env
+
+async def main():
+    plato = AsyncPlato()
+    session = await plato.sessions.create(envs=[Env.simulator("ubuntu-vm")])
+    desktop = session.desktop_env
+    try:
+        status = await desktop.sdk.status()
+        shot = await desktop.sdk.computer(ComputerRequest(action=Action.screenshot))
+        ...
+    finally:
+        await session.close()
+        await plato.close()
+```
+
+## What's next
+
+<CardGroup cols={2}>
+  <Card title="Tools" icon="screwdriver-wrench" href="/computer-use/tools">
+    Full reference for `computer`, `bash`, `edit`, `status`
+  </Card>
+  <Card title="Login" icon="right-to-bracket" href="/computer-use/login">
+    Get cookies into the VM's Chrome before the agent runs
+  </Card>
+  <Card title="Agent loop" icon="robot" href="/computer-use/agents">
+    Wire model tool calls to `computer` / `bash` / `edit`
+  </Card>
+</CardGroup>

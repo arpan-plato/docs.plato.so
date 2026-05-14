@@ -1,0 +1,97 @@
+---
+title: 'Examples'
+description: 'Working patterns for the Core SDK'
+---
+
+Self-contained snippets for the patterns clients actually run. All sync — for async, swap `Plato` → `AsyncPlato` and `await` everything.
+
+## 1. Single sim
+
+The minimum viable Plato program.
+
+```python
+from plato.v2 import Env, Plato
+
+plato = Plato()
+session = plato.sessions.create(envs=[Env.simulator("espocrm")])
+
+try:
+    session.reset()
+    print("Public URLs:", session.get_public_url())
+finally:
+    session.close()
+    plato.close()
+```
+
+## 2. Pin to a specific artifact
+
+`Env.simulator(name)` boots whatever artifact is configured as the sim's example version. Not every sim has one set, and the example can change underneath you. For reproducible runs, grab an artifact ID from the sim's **Versions** list in the [Plato dashboard](https://plato.so) and use `Env.artifact(...)`.
+
+```python
+session = plato.sessions.create(envs=[Env.artifact("artifact-abc123")])
+```
+
+## 3. Multi-env
+
+Two sims in one session. Both join a private WireGuard mesh and can reach each other at `{alias}.plato.internal`.
+
+```python
+session = plato.sessions.create(envs=[
+    Env.simulator("espocrm", alias="crm"),
+    Env.simulator("gitea", alias="git"),
+])
+
+try:
+    session.reset()
+
+    crm = session.get_env("crm")
+    git = session.get_env("git")
+
+    print("Git reachable from CRM at:", git.internal_hostname)
+finally:
+    session.close()
+```
+
+## 4. Full evaluation: testcase + login + evaluate
+
+The canonical end-to-end pattern. Spin a session from a testcase, reset to start mutation logging, log into the apps, run your agent, score.
+
+The login call depends on whether the testcase includes a desktop env — branch on `session.desktop_env`.
+
+```python
+from playwright.sync_api import sync_playwright
+
+from plato.v2 import Plato
+
+plato = Plato()
+testcase_id = "tc_abc123"
+
+# Pull the prompt — sessions.create doesn't expose it.
+response = plato.testcases.list()
+tc = next(t for t in response.testcases if t["publicId"] == testcase_id)
+prompt = tc["prompt"]
+
+session = plato.sessions.create(testcase=testcase_id)
+desktop = session.desktop_env
+
+try:
+    session.reset()                              # 1. start mutation logging
+
+    if desktop:
+        desktop.sdk.login(session)               # 2a. desktop session
+    else:
+        with sync_playwright() as p:             # 2b. app-sim session
+            browser = p.chromium.launch()
+            session.login(browser)
+
+    # 3. ... run your agent against `prompt` here ...
+
+    result = session.evaluate()                  # 4. score
+    # For OUTPUT scoring: result = session.evaluate(value={"answer": "..."})
+    print(f"success={result.success}  score={result.score}")
+finally:
+    session.close()
+    plato.close()
+```
+
+For the agent-loop side of step 3 on desktop sessions, see [Computer Use → Agent Loop Example](/computer-use/agents).

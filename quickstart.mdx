@@ -1,127 +1,61 @@
 ---
 title: 'Quickstart'
-description: 'Get started with Plato - from setup to your first environment'
+description: 'Get an API key and install the Core SDK'
 ---
 
-
 <Steps>
-  <Step title="Generate your API key">
-    Head to the [Plato dashboard](https://plato.so/settings) and copy your API key. Keep this secure - you'll need it for all API requests.
+  <Step title="Get an API key">
+    Open [https://plato.so/settings](https://plato.so/settings) and **scroll to the bottom**. Create a **Personal API Key** or an **Organization API Key** there.
 
     <Warning>
-      Your API key provides access to your Plato environments. Never share it publicly or commit it to version control.
+      Do **not** use the legacy API key shown at the top of the settings page — it's deprecated and won't work with the Core SDK. Always use a Personal or Organization key from the bottom of the page.
+    </Warning>
+
+    <Warning>
+      Your API key has full access to your environments. Don't commit it.
     </Warning>
   </Step>
 
   <Step title="Install the SDK">
-    Install the Plato SDK v2:
+    Requires Python 3.10+ and `plato-sdk-v2 >= 2.61.4`.
 
     ```bash
-    uv add plato-sdk-v2
+    uv add 'plato-sdk-v2>=2.61.4'
     ```
 
     Or with pip:
 
     ```bash
-    pip install plato-sdk-v2
+    pip install 'plato-sdk-v2>=2.61.4'
     ```
   </Step>
 
-  <Step title="Set up your environment variables">
-    Set your API key in your environment:
-
+  <Step title="Set your API key">
     ```bash
     export PLATO_API_KEY=your_api_key_here
     ```
 
-    The SDK will automatically use this environment variable.
+    The SDK picks this up automatically. Or pass it directly: `Plato(api_key="...")`.
   </Step>
 
-  <Step title="Create your first session">
-    Create a session with an environment and start interacting:
+  <Step title="Point the SDK at your tenant (if needed)">
+    The SDK defaults to the main Plato node at `https://plato.so`. If you're on a dedicated tenant node, set the base URL to `https://{tenant}.plato.so`:
 
-    ```python
-    import asyncio
-    from plato.v2 import AsyncPlato, Env
-
-    async def main():
-        # Initialize the client
-        plato = AsyncPlato()
-
-        # Create a session with an espocrm environment
-        session = await plato.sessions.create(
-            envs=[Env.simulator("espocrm")]
-        )
-
-        try:
-            # Reset to initial state
-            await session.reset()
-
-            # Get the public URL to access the application
-            urls = await session.get_public_url()
-            print(f"Access your environment at: {urls}")
-
-            # Execute a command
-            result = await session.execute("whoami")
-            print(f"Running as: {result}")
-
-            # Get the current state
-            state = await session.get_state()
-            print(f"State: {state}")
-
-        finally:
-            # Always clean up
-            await session.close()
-            await plato.close()
-
-    asyncio.run(main())
+    ```bash
+    export PLATO_BASE_URL=https://your-tenant.plato.so
     ```
-  </Step>
 
-  <Step title="Explore the API">
-    Now that you have a working environment, explore the full API:
-
-    ```python
-    # Multiple environments
-    session = await plato.sessions.create(
-        envs=[
-            Env.simulator("espocrm", alias="crm"),
-            Env.simulator("gitea", alias="git"),
-        ]
-    )
-
-    # Access specific environments
-    crm = session.get_env("crm")
-    await crm.execute("ls -la /app")
-
-    # Create snapshots
-    snapshot = await session.snapshot()
-
-    # Evaluate task completion
-    result = await session.evaluate()
-    ```
+    Or pass it directly: `Plato(base_url="https://your-tenant.plato.so")`. If you're on the main node (`plato.so`), skip this step.
   </Step>
 </Steps>
 
-## What's Next?
+## What's next
 
 <CardGroup cols={2}>
-  <Card title="SDK v2" icon="code" href="/sdk-v2/overview">
-    Learn the full SDK v2 API for sessions and environments
+  <Card title="Concepts" icon="book" href="/concepts/overview">
+    Sessions, environments, sims, mutations, scoring
   </Card>
-  <Card title="Agents" icon="robot" href="/agents/overview">
-    Build custom AI agents that run in containers
-  </Card>
-  <Card title="Worlds" icon="globe" href="/worlds/overview">
-    Create execution environments for your agents
-  </Card>
-  <Card title="Logging" icon="chart-line" href="/logging/overview">
-    Track events, spans, and trajectories
+  <Card title="Computer Use" icon="desktop" href="/computer-use/quickstart">
+    Drive a full Linux desktop — mouse, keyboard, shell, files
   </Card>
 </CardGroup>
-
-## Need Help?
-
-- **Installation issues?** Make sure you have Python 3.10+ and try `uv --version` to verify uv is installed
-- **Authentication problems?** Double-check your API key is set: `echo $PLATO_API_KEY`
-- **Session not starting?** Check your network connection and verify your API key has access

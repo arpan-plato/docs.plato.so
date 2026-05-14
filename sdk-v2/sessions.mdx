@@ -1,240 +1,102 @@
 ---
 title: 'Sessions'
-description: 'Create and manage sessions containing multiple environments'
+description: 'Reference for the Session class'
 ---
 
-# Sessions
+A `Session` holds one or more environments. See [Concepts → The lifecycle](/concepts/overview#the-lifecycle) for how `reset` / login / `evaluate` fit together; this page is the API reference.
 
-A Session groups one or more environments together and provides session-level operations.
+## Creating
 
-## Creating Sessions
-
-### From Simulators
-
-Create sessions from pre-built simulator snapshots:
+Provide exactly one of `envs`, `testcase`, or `artifacts`.
 
 ```python
-from plato.v2 import AsyncPlato, Env
-
-plato = AsyncPlato()
-
-# Single environment
-session = await plato.sessions.create(
-    envs=[Env.simulator("espocrm")]
-)
-
-# Multiple environments
-session = await plato.sessions.create(
-    envs=[
-        Env.simulator("espocrm", alias="crm"),
-        Env.simulator("gitea", alias="git"),
-    ]
-)
+session = plato.sessions.create(envs=[Env.simulator("espocrm")])
+session = plato.sessions.create(envs=[Env.artifact("artifact-abc123")])
+session = plato.sessions.create(testcase="tc_abc123")
 ```
 
-### From Tasks
-
-Create sessions from a pre-defined task:
+VMs are killed `timeout` seconds after creation (default `1800` = 30 min):
 
 ```python
-session = await plato.sessions.create(task="task-public-id-123")
+session = plato.sessions.create(envs=[...], timeout=3600)
 ```
 
-### From Artifacts
+`testcase=` auto-resets. `envs=` does not — call `session.reset()` first thing yourself.
 
-Create sessions from specific snapshots:
+## Operations
+
+### `reset()`
+
+Initialize mutation logging on every env. Call this **before** login and the agent run — see [Concepts → Reset](/concepts/overview#the-lifecycle).
 
 ```python
-session = await plato.sessions.create(
-    envs=[Env.artifact("artifact-abc123", alias="restored")]
-)
+session.reset()
 ```
 
-## Session Operations
+### `get_state()`
 
-### Reset
-
-Reset all environments to their initial state:
+Flush pending writes and return mutations per env.
 
 ```python
-await session.reset()
-```
-
-### Execute Commands
-
-Run shell commands across all environments:
-
-```python
-# Execute on all environments
-result = await session.execute("whoami")
-
-# Check results per environment
-for job_id, output in result.results.items():
-    print(f"{job_id}: {output.stdout}")
-```
-
-### Get State
-
-Retrieve the current application state (database mutations, file changes):
-
-```python
-state = await session.get_state()
-
+state = session.get_state()
 for job_id, env_state in state.results.items():
-    print(f"{job_id} mutations: {env_state.mutations}")
+    print(env_state.mutations)
 ```
 
-### Get Public URLs
+### `evaluate(value=None)`
 
-Get browser-accessible URLs for each environment:
+Score the session against its linked testcase. `value` is required for OUTPUT scoring; omit for MUTATION-only.
 
 ```python
-urls = await session.get_public_url()
-# Returns: {"crm": "https://abc123--80.sims.plato.so", ...}
-
-# With custom port
-urls = await session.get_public_url(port=8080)
+result = session.evaluate()
+print(result.success, result.score)
 ```
 
-### Evaluate
+### `get_public_url(port=None)`
 
-Evaluate the session against task criteria:
+Browser-accessible URLs per env, keyed by alias.
 
 ```python
-result = await session.evaluate()
-print(f"Success: {result.success}")
-print(f"Score: {result.score}")
+urls = session.get_public_url()
+# {"crm": "https://abc123--80.sims.plato.so", ...}
 ```
 
-### Snapshot
+### `link_testcase(testcase_id)`
 
-Create a checkpoint of all environments:
+Link a testcase to a session created from `envs=` so `evaluate()` has scoring config to read.
 
 ```python
-snapshot_result = await session.snapshot()
-
-for job_id, info in snapshot_result.results.items():
-    print(f"{job_id} artifact: {info.artifact_id}")
+session.link_testcase("tc_abc123")
 ```
 
-### Disk Snapshot
+### `login(browser)` / desktop login
 
-Create a disk-only snapshot (faster, no memory state):
+For app-sim sessions, pass a Playwright `Browser`. For desktop sessions, use `desktop.sdk.login(session)` instead — `session.login(browser)` raises if `session.desktop_env` is set. Full pattern: [Examples → Full evaluation](/sdk-v2/examples#4-full-evaluation-testcase-login-evaluate).
+
+### `close()`
 
 ```python
-result = await session.disk_snapshot(
-    override_service="my-service",
-    override_version="v1.0.0",
-)
+session.close()
+plato.close()
 ```
 
-## Accessing Environments
+Idempotent. Wrap session work in `try/finally` so VMs go away on crash.
 
-### List All Environments
+## Accessing envs
 
 ```python
 for env in session.envs:
-    print(f"{env.alias}: {env.job_id}")
+    print(env.alias, env.job_id)
+
+crm = session.get_env("crm")           # by alias
+desktop = session.desktop_env          # first env where is_desktop=True (or None)
 ```
 
-### Get Environment by Alias
-
-```python
-crm_env = session.get_env("crm")
-if crm_env:
-    result = await crm_env.execute("ls -la")
-```
-
-## Heartbeats
-
-Sessions automatically send heartbeats to keep environments alive. The heartbeat is started automatically when creating a session.
-
-```python
-# Heartbeats start automatically
-session = await plato.sessions.create(envs=[...])
-
-# Manually control heartbeats if needed
-await session.stop_heartbeat()
-await session.start_heartbeat()
-```
-
-## Serialization
-
-Sessions can be serialized for persistence and later restoration:
-
-```python
-# Serialize session state
-serialized = session.dump()
-
-# Save to file, database, etc.
-import json
-with open("session.json", "w") as f:
-    f.write(serialized.model_dump_json())
-
-# Later: restore the session
-from plato.v2 import AsyncSession, SerializedSession
-
-with open("session.json") as f:
-    data = SerializedSession.model_validate_json(f.read())
-
-restored_session = await AsyncSession.load(data)
-```
-
-## Cleanup
-
-Always close sessions when done to free resources:
-
-```python
-await session.close()
-await plato.close()
-```
-
-## Browser Login
-
-For environments with login flows, use the `login` method with Playwright:
-
-```python
-from playwright.async_api import async_playwright
-
-async with async_playwright() as p:
-    browser = await p.chromium.launch()
-
-    login_result = await session.login(browser)
-
-    # Access logged-in pages by alias
-    crm_page = login_result.pages["crm"]
-    await crm_page.click("button.dashboard")
-
-    await login_result.context.close()
-    await browser.close()
-```
-
-## Desktop Login
-
-Sessions that include a desktop VM (a simulator with `is_desktop=True`) use a different login path. Instead of driving a local Playwright browser, login runs inside the desktop VM's own Chrome so cookies and session state land where the agent will actually operate.
-
-```python
-desktop = session.desktop_env
-if desktop:
-    # Logs every other sim env into the VM's Chrome.
-    await desktop.sdk.login(session)
-else:
-    async with async_playwright() as p:
-        browser = await p.chromium.launch()
-        await session.login(browser)
-```
-
-<Warning>
-`session.login(browser)` raises on sessions that contain a desktop env. Always branch on `session.desktop_env` when your code needs to support both kinds of task.
-</Warning>
-
-Full guide: [Desktop VMs](/sdk-v2/desktop-vms).
-
-## Session Properties
+## Properties
 
 | Property | Type | Description |
-|----------|------|-------------|
+|---|---|---|
 | `session_id` | `str` | Unique session identifier |
-| `task_public_id` | `str \| None` | Task ID if created from task |
-| `envs` | `list[Environment]` | List of environments |
-| `desktop_env` | `Environment \| None` | First env with `is_desktop=True`, or `None` |
+| `task_public_id` | `str \| None` | Test case ID if created from `testcase=` |
+| `envs` | `list[Environment]` | All envs in the session |
+| `desktop_env` | `Environment \| None` | First env where `is_desktop=True` |

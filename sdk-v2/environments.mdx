@@ -1,219 +1,86 @@
 ---
 title: 'Environments'
-description: 'Interact with individual VM environments'
+description: 'Reference for the Environment class'
 ---
 
-# Environments
-
-An Environment represents a single VM within a session. Each environment runs a simulator and can execute commands, track state, and be snapshotted.
-
-## Accessing Environments
-
-Environments are accessed through a session:
+An `Environment` is a single VM in a `Session`. Access via `session.envs` or `session.get_env(alias)`.
 
 ```python
-from plato.v2 import AsyncPlato, Env
+session = plato.sessions.create(envs=[
+    Env.simulator("espocrm", alias="crm"),
+    Env.simulator("gitea", alias="git"),
+])
 
-plato = AsyncPlato()
-session = await plato.sessions.create(
-    envs=[
-        Env.simulator("espocrm", alias="crm"),
-        Env.simulator("gitea", alias="git"),
-    ]
-)
-
-# List all environments
-for env in session.envs:
-    print(f"{env.alias}: {env.job_id}")
-
-# Get specific environment by alias
 crm = session.get_env("crm")
+desktop = session.desktop_env       # or None
 ```
 
-## Environment Operations
+## Declaring envs
 
-### Execute Commands
-
-Run shell commands on the environment:
-
-```python
-# Basic command
-result = await env.execute("ls -la /app")
-print(result.stdout)
-print(result.stderr)
-print(result.exit_code)
-
-# With timeout
-result = await env.execute("long-running-script.sh", timeout=120)
-```
-
-### Reset
-
-Reset the environment to its initial state:
-
-```python
-await env.reset()
-```
-
-### Get State
-
-Retrieve the current application state:
-
-```python
-state = await env.get_state()
-
-# Access state data
-print(state.mutations)  # Database/file changes
-print(state.state)      # Current state snapshot
-```
-
-### Set Date
-
-Change the system date (useful for testing time-dependent features):
-
-```python
-from datetime import datetime
-
-await env.set_date(datetime(2024, 12, 25, 10, 0, 0))
-```
-
-### Snapshot
-
-Create a checkpoint of the environment:
-
-```python
-result = await env.snapshot()
-print(f"Artifact ID: {result.artifact_id}")
-```
-
-### Get Connection Info
-
-Get network routing information for the VM:
-
-```python
-info = await env.get_connection_info()
-print(f"Gateway IP: {info.vm_gateway_ip}")
-print(f"Private IP: {info.vm_private_ip}")
-print(f"Ready: {info.ready}")
-```
-
-### Close
-
-Close the environment (stops the VM):
-
-```python
-await env.close()
-```
-
-## Environment Properties
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `job_id` | `str` | Unique job/VM identifier |
-| `alias` | `str` | Human-readable alias |
-| `artifact_id` | `str \| None` | Source artifact ID |
-| `session_id` | `str` | Parent session ID |
-
-## Creating Environments
-
-Use the `Env` helper to specify environment configurations:
-
-### From Simulator
-
-```python
-from plato.v2 import Env
-
-# Default (latest tag, base dataset)
-Env.simulator("espocrm")
-
-# With specific tag
-Env.simulator("espocrm:staging")
-Env.simulator("espocrm", tag="staging")
-
-# With specific dataset
-Env.simulator("espocrm", dataset="blank")
-
-# With custom alias
-Env.simulator("espocrm", alias="my-crm")
-```
-
-### From Artifact
-
-```python
-# From a specific snapshot
-Env.artifact("artifact-abc123")
-Env.artifact("artifact-abc123", alias="restored")
-```
-
-### From Resource
-
-Create a blank VM with custom resources:
+Build env configs with the `Env` helper, then pass to `plato.sessions.create(envs=[...])`.
 
 ```python
 from plato.v2 import Env, SimConfigCompute
 
-Env.resource(
+Env.simulator("espocrm")                       # the sim's example version
+Env.simulator("espocrm", alias="crm")          # name it
+Env.artifact("artifact-abc123")                # pin to a specific version
+Env.artifact("artifact-abc123", alias="crm")
+Env.resource(                                  # blank VM with custom resources
     "custom-service",
-    SimConfigCompute(
-        cpus=4,
-        memory=8192,  # MB
-        disk=20000,   # MB
-    ),
-    alias="beefy-vm"
+    SimConfigCompute(cpus=4, memory=8192, disk=20000),  # MB
+    alias="beefy-vm",
 )
 ```
 
-## Example: Multi-Environment Workflow
+<Note>
+`Env.simulator(name)` boots whatever artifact is configured as the sim's example version. Not every sim has one set, and the example can change underneath you. For reproducible runs, grab an artifact ID from the sim's **Versions** list in the [Plato dashboard](https://plato.so) and use `Env.artifact(...)`.
+</Note>
+
+## Operations
+
+### `reset()`
+
+Reset just this env without touching others.
 
 ```python
-from plato.v2 import AsyncPlato, Env
-
-async def multi_env_example():
-    plato = AsyncPlato()
-
-    # Create session with multiple environments
-    session = await plato.sessions.create(
-        envs=[
-            Env.simulator("gitea", alias="git"),
-            Env.simulator("espocrm", alias="crm"),
-        ]
-    )
-
-    try:
-        # Get environments
-        git = session.get_env("git")
-        crm = session.get_env("crm")
-
-        # Reset all to initial state
-        await session.reset()
-
-        # Execute commands on specific environments
-        git_result = await git.execute("git status")
-        crm_result = await crm.execute("php artisan migrate:status")
-
-        # Get state from all environments
-        state = await session.get_state()
-        for job_id, env_state in state.results.items():
-            print(f"{job_id}: {len(env_state.mutations)} mutations")
-
-        # Snapshot everything
-        snapshot = await session.snapshot()
-
-    finally:
-        await session.close()
-        await plato.close()
+crm.reset()
 ```
 
-## Error Handling
+### `get_state()`
 
 ```python
-try:
-    result = await env.execute("invalid-command")
-except Exception as e:
-    print(f"Command failed: {e}")
-
-# Check command exit code
-result = await env.execute("test -f /nonexistent")
-if result.exit_code != 0:
-    print(f"File not found: {result.stderr}")
+state = crm.get_state()
+print(state.mutations)
 ```
+
+### `close()`
+
+Tear down just this VM. Usually `session.close()` is what you want.
+
+```python
+crm.close()
+```
+
+## `env.sdk` — sim-specific client
+
+`env.sdk` lazy-loads the sim's own client based on the env's `simulator` field (resolved from `plato.sims.{name}`). For desktop envs (currently `ubuntu-vm`), this is the entire computer-use surface — see [Computer Use → Tools](/computer-use/tools).
+
+```python
+desktop = session.desktop_env
+desktop.sdk.status()
+desktop.sdk.computer(...)
+```
+
+## Properties
+
+| Property | Type | Description |
+|---|---|---|
+| `job_id` | `str` | Unique VM/job identifier |
+| `alias` | `str` | Human-readable alias |
+| `simulator` | `str \| None` | Sim name (e.g. `"espocrm"`, `"ubuntu-vm"`) |
+| `artifact_id` | `str \| None` | Source artifact ID |
+| `is_desktop` | `bool` | True for desktop / computer-use envs |
+| `mesh_ip` | `str \| None` | WireGuard mesh IP |
+| `internal_hostname` | `str` | `{alias}.plato.internal` — reachable from other VMs in the session |
+| `session_id` | `str` | Parent session ID |
