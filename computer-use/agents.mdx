@@ -1,0 +1,268 @@
+---
+title: 'Agent Loop Example'
+description: 'Wire model tool calls to computer / bash / edit, plus useful recipes'
+---
+
+The four tool surfaces (`computer`, `bash`, `edit`, `status`) are designed so that a `{tool_name, tool_input}` dict from any tool-calling model maps cleanly to one VM call. This page shows a provider-neutral dispatch function, a generic loop, and a cookbook of useful patterns.
+
+## Dispatch — model tool call → VM call
+
+```python
+from plato.sims.ubuntu_vm.models import (
+    Action,
+    BashRequest,
+    Command,
+    ComputerRequest,
+    EditRequest,
+)
+
+
+def dispatch_tool(env, tool_name: str, tool_input: dict) -> dict:
+    """Map a model's tool call to a Plato VM call.
+
+    Returns a provider-neutral dict: {"type": "image"|"text", ...}.
+    Re-wrap it for whatever tool_result shape your model SDK expects.
+    """
+    if tool_name == "computer":
+        req = ComputerRequest(
+            action=Action(tool_input.get("action", "screenshot")),
+            coordinate=tool_input.get("coordinate"),
+            text=tool_input.get("text"),
+            scroll_direction=tool_input.get("scroll_direction"),
+            scroll_amount=tool_input.get("scroll_amount"),
+            duration=tool_input.get("duration"),
+        )
+        result = env.sdk.computer(req)
+        if result.base64_image:
+            return {
+                "type": "image",
+                "media_type": "image/png",
+                "data": result.base64_image,
+            }
+        return {"type": "text", "text": result.output or result.error or "OK"}
+
+    if tool_name == "bash":
+        result = env.sdk.bash(BashRequest(
+            command=tool_input["command"],
+            restart=tool_input.get("restart", False),
+            timeout=tool_input.get("timeout", 120),
+        ))
+        return {"type": "text", "text": (result.output or "") + (result.error or "")}
+
+    if tool_name == "edit":
+        result = env.sdk.edit(EditRequest(
+            command=Command(tool_input["command"]),
+            path=tool_input["path"],
+            file_text=tool_input.get("file_text"),
+            old_str=tool_input.get("old_str"),
+            new_str=tool_input.get("new_str"),
+            insert_line=tool_input.get("insert_line"),
+            view_range=tool_input.get("view_range"),
+        ))
+        return {"type": "text", "text": result.output or result.error or "OK"}
+
+    raise ValueError(f"unknown tool: {tool_name}")
+```
+
+For async, change the function to `async def` and `await env.sdk.computer/bash/edit(...)`.
+
+## Loop — screenshot, decide, dispatch, repeat
+
+```python
+def run_agent(env, system_prompt: str, user_goal: str, max_turns: int = 50):
+    messages = init_messages(system_prompt, user_goal)   # your model SDK
+
+    for _ in range(max_turns):
+        response = call_model(messages)                  # your model SDK
+        if is_done(response):
+            return response
+
+        for tool_call in extract_tool_calls(response):
+            result = dispatch_tool(env, tool_call.name, tool_call.input)
+            messages = append_tool_result(messages, tool_call.id, result)
+```
+
+`init_messages`, `call_model`, `extract_tool_calls`, `append_tool_result` are whatever your model SDK provides — Anthropic, OpenAI, your own. `dispatch_tool` is the only piece that talks to the Plato VM.
+
+For the surrounding session lifecycle (testcase → reset → login → evaluate), see [Core SDK → Examples → Full evaluation](/sdk-v2/examples#4-full-evaluation-testcase-login-evaluate). Drop the agent loop above into the "run your agent" step.
+
+## Cookbook
+
+Short recipes that come up repeatedly. Each one assumes `desktop = session.desktop_env`.
+
+### 1. Save a screenshot to disk
+
+```python
+import base64, os, tempfile
+from plato.sims.ubuntu_vm.models import Action, ComputerRequest
+
+shot = desktop.sdk.computer(ComputerRequest(action=Action.screenshot))
+path = os.path.join(tempfile.gettempdir(), "vm_screenshot.png")
+with open(path, "wb") as f:
+    f.write(base64.b64decode(shot.base64_image))
+```
+
+### 2. Open a terminal via the GUI and run a command
+
+```python
+import time
+from plato.sims.ubuntu_vm.models import Action, ComputerRequest
+
+# Most Linux desktops bind ctrl+alt+t to "open terminal".
+desktop.sdk.computer(ComputerRequest(action=Action.key, text="ctrl+alt+t"))
+time.sleep(2)
+desktop.sdk.computer(ComputerRequest(
+    action=Action.type, text="echo 'hello from the SDK!'\n",
+))
+```
+
+### 3. Pre-seed state with `bash`, then verify with `bash`
+
+```python
+from plato.sims.ubuntu_vm.models import BashRequest
+
+desktop.sdk.bash(BashRequest(
+    command="echo 'benchmark input' > ~/Desktop/input.txt",
+))
+
+check = desktop.sdk.bash(BashRequest(
+    command="test -s ~/Desktop/input.txt && echo OK || echo MISSING",
+))
+assert "OK" in (check.output or "")
+```
+
+### 4. Copy a file from the VM back to your host
+
+There's no dedicated file-transfer primitive — `bash` + base64 is the idiom. Same three lines work for screenshots, PDFs, logs, CSVs, binaries.
+
+```python
+import base64
+from plato.sims.ubuntu_vm.models import BashRequest
+
+b64 = desktop.sdk.bash(
+    BashRequest(command="base64 -w0 /tmp/report.pdf"),
+).output
+with open("report.pdf", "wb") as f:
+    f.write(base64.b64decode(b64))
+```
+
+### 5. Copy a file from your host into the VM
+
+For small/text files, `edit` is cleanest:
+
+```python
+from plato.sims.ubuntu_vm.models import Command, EditRequest
+
+desktop.sdk.edit(EditRequest(
+    command=Command.create,
+    path="/tmp/config.json",
+    file_text='{"debug": true}\n',
+))
+```
+
+For larger or binary blobs, base64-encode on your side and decode in `bash`:
+
+```python
+import base64
+from plato.sims.ubuntu_vm.models import BashRequest
+
+with open("dataset.tgz", "rb") as f:
+    encoded = base64.b64encode(f.read()).decode()
+
+desktop.sdk.bash(BashRequest(
+    command=f"echo '{encoded}' | base64 -d > /tmp/dataset.tgz",
+))
+```
+
+### 6. Drive the VM's Chrome over CDP from your laptop
+
+```python
+from playwright.sync_api import sync_playwright
+
+desktop.sdk.ensure_chrome_cdp()
+ws_url = desktop.sdk.get_cdp_ws_url()
+
+with sync_playwright() as p:
+    browser = p.chromium.connect_over_cdp(ws_url)
+    ctx = browser.contexts[0]
+    page = ctx.pages[0] if ctx.pages else ctx.new_page()
+    page.goto("https://example.com")
+    page.get_by_role("link", name="More information").click()
+```
+
+### 7. Install extra tooling on the VM
+
+Most evaluations don't need new packages on the VM, but occasionally you want a screen recorder, trace collector, or CLI to shell out to during scoring. The pattern is the same regardless of the tool:
+
+```python
+from plato.sims.ubuntu_vm.models import BashRequest
+
+
+def install_package(desktop, package: str, binary: str | None = None):
+    """Idempotently apt-install a package inside the VM."""
+    probe = binary or package
+
+    check = desktop.sdk.bash(BashRequest(command=f"which {probe} || echo MISSING"))
+    if "MISSING" not in (check.output or ""):
+        return
+
+    install = desktop.sdk.bash(BashRequest(
+        command=(
+            "DEBIAN_FRONTEND=noninteractive "
+            "apt-get -o Acquire::Check-Valid-Until=false "
+            "-o Acquire::Check-Date=false update -qq && "
+            "DEBIAN_FRONTEND=noninteractive "
+            f"apt-get -o Acquire::Check-Valid-Until=false "
+            f"-o Acquire::Check-Date=false install -y -qq {package}"
+        ),
+        timeout=300,
+    ))
+
+    verify = desktop.sdk.bash(BashRequest(command=f"which {probe}"))
+    if not (verify.output or "").strip():
+        raise RuntimeError(
+            f"{package} install failed: {install.error or install.output}"
+        )
+
+
+install_package(desktop, "ffmpeg")
+```
+
+The `Acquire::Check-Valid-Until=false` flags work around stale system clocks on freshly-booted VMs, where `apt-get update` would otherwise reject the Release file.
+
+### 8. Record a video of the session with ffmpeg
+
+Start ffmpeg in the background, do whatever you want captured, then stop cleanly. **Always** use `SIGINT` (`pkill -INT`) to stop ffmpeg — only SIGINT lets it flush the MP4 MOOV atom; a SIGKILL'd recording is unplayable.
+
+```python
+status = desktop.sdk.status()
+w, h = status.resolution.width, status.resolution.height
+
+# Start.
+desktop.sdk.bash(BashRequest(command=(
+    "pkill -9 -f 'ffmpeg.*x11grab' 2>/dev/null; "
+    f"DISPLAY=:0 nohup ffmpeg -y -f x11grab -video_size {w}x{h} -framerate 10 "
+    f"-i :0 -c:v libx264 -preset ultrafast -pix_fmt yuv420p "
+    f"/tmp/session.mp4 > /tmp/ffmpeg.log 2>&1 &"
+)))
+
+# ... whatever you want captured happens here ...
+
+# Stop cleanly. SIGINT lets ffmpeg finalize the file.
+desktop.sdk.bash(BashRequest(command=(
+    "pkill -INT -f 'ffmpeg.*x11grab'; "
+    "for i in 1 2 3 4 5; do sleep 1; pgrep -f 'ffmpeg.*x11grab' || break; done"
+)))
+
+# Pull the file back.
+import base64
+b64 = desktop.sdk.bash(BashRequest(command="base64 -w0 /tmp/session.mp4")).output
+with open("session.mp4", "wb") as f:
+    f.write(base64.b64decode(b64))
+```
+
+## Pitfalls
+
+- `get_liveview_url()` is sync; don't `await` it even on the async client.
+- No dedicated file-transfer primitive — use `edit(create)` for text and `bash` + base64 for binaries.
+- Stop background `ffmpeg` with `SIGINT`, never `SIGKILL`.

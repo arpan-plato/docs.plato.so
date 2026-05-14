@@ -39,49 +39,20 @@
       ]
     },
     {
-      "group": "SDK v2",
+      "group": "Core SDK",
       "pages": [
-        "sdk-v2/overview",
+        "concepts/overview",
         "sdk-v2/sessions",
         "sdk-v2/environments",
-        "sdk-v2/desktop-vms"
+        "sdk-v2/examples"
       ]
     },
     {
-      "group": "SDK Reference",
+      "group": "Computer Use",
       "pages": [
-        "sdk/plato-client",
-        "sdk/plato-environment",
-        "sdk/plato-task"
-      ]
-    },
-    {
-      "group": "Agents",
-      "pages": [
-        "agents/overview",
-        "agents/creating-agents",
-        "agents/running-agents"
-      ]
-    },
-    {
-      "group": "Worlds",
-      "pages": [
-        "worlds/overview",
-        "worlds/creating-worlds"
-      ]
-    },
-    {
-      "group": "Logging",
-      "pages": [
-        "logging/overview",
-        "logging/spans",
-        "logging/trajectories"
-      ]
-    },
-    {
-      "group": "Examples",
-      "pages": [
-        "examples"
+        "computer-use/quickstart",
+        "computer-use/tools",
+        "computer-use/agents"
       ]
     }
   ],
