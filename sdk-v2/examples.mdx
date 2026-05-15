@@ -56,6 +56,12 @@ finally:
 
 The canonical end-to-end pattern. Spin a session from a testcase, reset to start mutation logging, log into the apps, run your agent, score.
 
+<Tip>
+**Start sessions from a testcase whenever you can.** `plato.sessions.create(testcase=...)` provisions the right envs, links the scoring config, and auto-resets — `session.evaluate()` then just works. Sessions created from `envs=` need manual `reset()` and `link_testcase(...)` before `evaluate()` will score.
+</Tip>
+
+You need to know the testcase's public ID (e.g. `"tc_abc123"`) and the prompt the agent should run against — both come from the testcase's page in the [Plato dashboard](https://plato.so).
+
 The login call depends on whether the testcase includes a desktop env — branch on `session.desktop_env`.
 
 ```python
@@ -64,12 +70,10 @@ from playwright.sync_api import sync_playwright
 from plato.v2 import Plato
 
 plato = Plato()
-testcase_id = "tc_abc123"
 
-# Pull the prompt — sessions.create doesn't expose it.
-response = plato.testcases.list()
-tc = next(t for t in response.testcases if t["publicId"] == testcase_id)
-prompt = tc["prompt"]
+# From the testcase's page in the Plato dashboard:
+testcase_id = "tc_abc123"
+prompt = "..."   # the task instructions you'll give to the agent
 
 session = plato.sessions.create(testcase=testcase_id)
 desktop = session.desktop_env
