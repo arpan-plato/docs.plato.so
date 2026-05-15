@@ -55,12 +55,12 @@ A **mutation** is a tracked change to the env (a database write, a file change) 
 
 A **testcase** is a pre-defined task: prompt, target sim(s), starting artifacts, scoring config. They live in your Plato tenant with public IDs like `"tc_abc123"`.
 
+**Starting a session from a testcase is the easiest path.** `plato.sessions.create(testcase="tc_abc123")` provisions the right envs, links the scoring config, and auto-resets — `session.evaluate()` then just works. Sessions created from `envs=` need a manual `reset()` and a `session.link_testcase("tc_abc123")` before `evaluate()` will score.
+
 `session.evaluate()` scores the session against the linked testcase. Two scoring modes; a testcase can use one or both:
 
 - **MUTATION** — the testcase declares the database/file changes a successful run must produce. `evaluate()` reads the env's mutation stream and checks them.
 - **OUTPUT** — the agent must return a JSON object matching a schema declared on the testcase. Pass it as `evaluate(value=...)`.
-
-Sessions created from `testcase=` are linked automatically. Sessions created from `envs=` aren't until you call `session.link_testcase("tc_abc123")`.
 
 ## Public URLs vs liveview
 
