@@ -92,7 +92,7 @@ try:
 
     result = session.evaluate()                  # 4. score
     # For OUTPUT scoring: result = session.evaluate(value={"answer": "..."})
-    print(f"success={result.success}  score={result.score}")
+    print(f"correct={result.correct}  score={result.score}")
 finally:
     session.close()
     plato.close()
