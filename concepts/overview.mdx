@@ -41,7 +41,7 @@ Every Plato run follows the same five steps:
 2. **Login** — `desktop.sdk.login(session)` for desktop sessions, `session.login(browser)` for app-sim sessions. Login mutations are captured by the stream.
 3. **Run the agent** — drive the env however the task requires.
 4. **`session.get_state()`** — *(optional)* peek at mutations mid-run.
-5. **`session.evaluate()`** — score the session against its linked testcase.
+5. **`session.evaluate()`** — score the session against its testcase.
 
 For a working example: [Core SDK → Examples](/sdk-v2/examples).
 
@@ -55,9 +55,9 @@ A **mutation** is a tracked change to the env (a database write, a file change) 
 
 A **testcase** is a pre-defined task: prompt, target sim(s), starting artifacts, scoring config. They live in your Plato tenant with public IDs like `"tc_abc123"`.
 
-**Starting a session from a testcase is the easiest path.** `plato.sessions.create(testcase="tc_abc123")` provisions the right envs, links the scoring config, and auto-resets — `session.evaluate()` then just works. Sessions created from `envs=` need a manual `reset()` and a `session.link_testcase("tc_abc123")` before `evaluate()` will score.
+**Starting a session from a testcase is the only path to scoring.** `plato.sessions.create(testcase="tc_abc123")` provisions the right envs, links the scoring config, and auto-resets — `session.evaluate()` then just works. Sessions created from `envs=` are for free-form work and cannot be evaluated.
 
-`session.evaluate()` scores the session against the linked testcase. Two scoring modes; a testcase can use one or both:
+`session.evaluate()` scores the session against its testcase. Two scoring modes; a testcase can use one or both:
 
 - **MUTATION** — the testcase declares the database/file changes a successful run must produce. `evaluate()` reads the env's mutation stream and checks them.
 - **OUTPUT** — the agent must return a JSON object matching a schema declared on the testcase. Pass it as `evaluate(value=...)`.
@@ -85,6 +85,6 @@ Every API has a sync (`Plato`) and async (`AsyncPlato`) form — same names, jus
 | **Mutation** | A tracked change (db write, file change) since the last reset. |
 | **Reset** | Initialize mutation logging on each sim. |
 | **Testcase** | A pre-defined task: prompt + envs + scoring config. |
-| **Evaluate** | Score a session against its linked testcase. |
+| **Evaluate** | Score a session against its testcase. |
 | **Liveview** | noVNC URL to watch a desktop VM in real time. |
 | **Mesh** | Per-session WireGuard network connecting all envs at `{alias}.plato.internal`. |
