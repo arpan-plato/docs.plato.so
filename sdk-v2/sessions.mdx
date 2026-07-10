@@ -23,6 +23,8 @@ session = plato.sessions.create(envs=[...], timeout=3600)
 
 `testcase=` auto-resets. `envs=` does not — call `session.reset()` first thing yourself.
 
+To score a run with `evaluate()`, create the session with `testcase=` — it provisions the testcase's envs and links the scoring config in one step. Sessions created from `envs=` or `artifacts=` cannot be evaluated.
+
 ## Operations
 
 ### `reset()`
@@ -45,7 +47,7 @@ for job_id, env_state in state.results.items():
 
 ### `evaluate(value=None)`
 
-Score the session against its linked testcase. `value` is required for OUTPUT scoring; omit for MUTATION-only.
+Score the session against its testcase. Only sessions created with `testcase=` can be evaluated — the testcase carries the scoring config. `value` is required for OUTPUT scoring; omit for MUTATION-only.
 
 ```python
 result = session.evaluate()
@@ -59,14 +61,6 @@ Browser-accessible URLs per env, keyed by alias.
 ```python
 urls = session.get_public_url()
 # {"crm": "https://abc123--80.sims.plato.so", ...}
-```
-
-### `link_testcase(testcase_id)`
-
-Link a testcase to a session created from `envs=` so `evaluate()` has scoring config to read.
-
-```python
-session.link_testcase("tc_abc123")
 ```
 
 ### `login(browser)` / desktop login

@@ -57,7 +57,7 @@ finally:
 The canonical end-to-end pattern. Spin a session from a testcase, reset to start mutation logging, log into the apps, run your agent, score.
 
 <Tip>
-**Start sessions from a testcase whenever you can.** `plato.sessions.create(testcase=...)` provisions the right envs, links the scoring config, and auto-resets — `session.evaluate()` then just works. Sessions created from `envs=` need manual `reset()` and `link_testcase(...)` before `evaluate()` will score.
+**Always start scored sessions from the testcase.** `plato.sessions.create(testcase=...)` provisions the right envs (desktop envs included), links the scoring config, and auto-resets — `session.evaluate()` then just works. Sessions created from `envs=` or `artifacts=` cannot be evaluated.
 </Tip>
 
 You need to know the testcase's public ID (e.g. `"tc_abc123"`) and the prompt the agent should run against — both come from the testcase's page in the [Plato dashboard](https://plato.so).
