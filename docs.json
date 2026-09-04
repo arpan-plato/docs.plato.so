@@ -11,15 +11,6 @@
   "navigation": {
     "groups": [
       {
-        "group": "Platform",
-        "pages": [
-          "platform/getting-started",
-          "platform/building-a-world-and-task",
-          "platform/running-benchmarks",
-          "platform/submitting-and-review"
-        ]
-      },
-      {
         "group": "Get Started",
         "pages": [
           "quickstart"
@@ -40,6 +31,15 @@
           "computer-use/quickstart",
           "computer-use/tools",
           "computer-use/agents"
+        ]
+      },
+      {
+        "group": "Platform",
+        "pages": [
+          "platform/getting-started",
+          "platform/building-a-world-and-task",
+          "platform/running-benchmarks",
+          "platform/submitting-and-review"
         ]
       }
     ]
