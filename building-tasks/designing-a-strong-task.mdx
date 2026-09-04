@@ -1,0 +1,64 @@
+---
+title: "Designing a strong task"
+description: "Start from real work, make it genuinely hard, and let the agent figure out how."
+---
+
+A strong task isn't a puzzle you invent — it's a real piece of your job, recreated faithfully and then sharpened until it's genuinely difficult. Here's how to get there.
+
+## 1. Start from real work
+
+Pick something you actually do: a month-end close, a policy review, a client recommendation, a claim assessment. Build the world around it with the real texture — the stale spreadsheet, the conflicting emails, the exception that doesn't fit the rule. The realism is what makes the difficulty legitimate. Complexity should come *from the work being real*, never from artificial rules you added to make it hard.
+
+## 2. Let the environment hold the answer, not the instructions
+
+This is the single most important habit, and the easiest to get wrong.
+
+A real manager sends a two-line request and trusts you to know the method. Your task should do the same. Everything about *how* to do the work — which policy applies, which figures matter, what the standard is — should live in the world (the workbook, the policy document, the emails), where a professional would look for it. It should **not** be spelled out in the task.
+
+<Warning>
+If your instruction says "run the present-value test by discounting the old and new cash flows at the original rate and comparing the difference to 10%," you've just handed the agent the method. Now you're only testing whether it can follow steps — not whether it knows, as an expert would, that a debt amendment *requires* that test. Put the policy in the world and let the agent apply it.
+</Warning>
+
+The test: **could a competent professional in your field do this task from the world alone, without the instructions telling them how?** If yes, you've built it right. If the instructions are doing the thinking, move that thinking into the environment.
+
+## 3. Make it hard — on purpose, and gradually
+
+New tasks are almost always too easy at first. The best builders harden them in a loop:
+
+<Steps>
+  <Step title="Build it and run a benchmark">
+    See how the AI does on your first version.
+  </Step>
+  <Step title="Raise the difficulty">
+    Tighten the data, add the complications a real case would have, take away the hand-holding. Add the kind of subtlety that trips up someone who isn't paying attention — a figure that looks right but isn't, a later email that supersedes an earlier one, an exception that shouldn't be treated like the rule.
+  </Step>
+  <Step title="Run it again">
+    Repeat until the AI is actually **failing** the task.
+  </Step>
+  <Step title="Confirm it's still solvable">
+    Once it's failing, add a hint or two into the task to see if the agent can then pass. This proves the task is genuinely doable, and it shows exactly *where* the agent trips up — which makes review much faster. (You can remove the hints again before finalizing.)
+  </Step>
+</Steps>
+
+That failing point is the goal. A task a capable agent passes on the first try isn't measuring anything.
+
+## 4. Aim for the right kind of failure
+
+The failure you want is the one a professional would recognize as a real mistake:
+
+- The agent trusted a number it shouldn't have, instead of checking the source.
+- It missed a piece of evidence that was sitting in the inbox.
+- It applied the wrong standard, or stopped one step short of finishing.
+- It reached a confident conclusion that a careful expert would know is wrong.
+
+<Note>
+Here's a useful test for whether a failure is "good": **could a careful professional, with the same materials, defensibly reach the agent's answer?** If yes, the task is probably ambiguous — that's a design problem, not an agent mistake. If no — the agent is clearly wrong on the evidence — you've caught a real failure. That's exactly what you want.
+</Note>
+
+## A quick example
+
+*Weak version:* "Review the training scores and recommend the priority. The lowest dimension is timeline, so recommend timeline coaching." — The answer is in the instruction. Nothing is tested.
+
+*Strong version:* "Review the team's recent performance and send me your recommended training priority." — And in the world: scores where the *lowest average* (timeline) is dragged down by just two people who collapsed on it, while the truly weak-for-everyone dimension is something else. An agent that reasons from the average alone picks wrong; one that looks at the spread picks right. That's real judgment, hidden in the data, catching a real analytical mistake.
+
+Next: [Writing good verifiers](/building-tasks/writing-verifiers).

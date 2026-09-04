@@ -11,6 +11,17 @@
   "navigation": {
     "groups": [
       {
+        "group": "Building Tasks",
+        "pages": [
+          "building-tasks/welcome",
+          "building-tasks/how-it-works",
+          "building-tasks/designing-a-strong-task",
+          "building-tasks/writing-verifiers",
+          "building-tasks/build-test-submit",
+          "building-tasks/common-mistakes"
+        ]
+      },
+      {
         "group": "Get Started",
         "pages": [
           "quickstart"

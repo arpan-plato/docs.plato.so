@@ -1,0 +1,55 @@
+---
+title: "How it works: worlds, tasks, and verifiers"
+description: "The three pieces of every benchmark, in plain English."
+---
+
+Every benchmark you build has three parts. Once these click, everything else is detail.
+
+## The world
+
+The **world** is the simulated workplace. It's a set of real applications — a spreadsheet tool, an email inbox, an accounting system, a chat app — pre-loaded with the documents and data your task needs.
+
+Think of it as the desk a colleague sits down to on their first morning: the workbook is open, the relevant emails are in the inbox, the records are in the system. Everything the person would need to do the job is *in the world*. Nothing they'd need should live only in the instructions.
+
+<Note>
+A key habit: put the information **where a real professional would find it**, not in the task description. If the answer depends on a signed contract, seed the signed contract. If a decision hinges on something a manager mentioned, put it in an email or a chat message — not in the assignment.
+</Note>
+
+## The task
+
+The **task** is the assignment — the message a manager would actually send. Short, natural, and to the point:
+
+> "Can you review the September invoices, decide what to approve, and send me your recommendation?"
+
+That's it. A real manager wouldn't spell out every step, name every figure, or explain how to do the analysis — they'd expect the professional to know. Your task should read the same way. The temptation is to be thorough and list every step; resist it. The moment you tell the agent *how* to do the work, you've stopped testing whether it knows how.
+
+## The verifier
+
+The **verifier** is the grader — the checklist that decides whether the AI did the job correctly. It's a set of individual checks (we call them criteria), each one a specific, checkable statement about the finished work:
+
+- "The approved total is $84,000."
+- "An email was sent to the CFO, not left as a draft."
+- "The invoice is coded to the correct account."
+
+The verifier looks at the **actual state of the world at the end** — the real cell values, the real sent email, the real records — not at what the AI *says* it did. An agent will often claim it did something correctly; the verifier checks whether it actually happened.
+
+This is where your expertise matters most. You decide what "correct" means, and you write those checks by hand. More on that in [Writing good verifiers](/building-tasks/writing-verifiers).
+
+## Putting it together
+
+<Steps>
+  <Step title="The world is seeded">
+    The apps and data are set up — the workbook, the emails, the records.
+  </Step>
+  <Step title="The AI reads the task">
+    It gets the short assignment and has to figure out what to do.
+  </Step>
+  <Step title="The AI does the work">
+    It moves through the apps, reads the evidence, makes decisions, and produces outputs — a filled-in workbook, a sent email.
+  </Step>
+  <Step title="The verifier grades the result">
+    Each criterion is checked against the final state of the world. All checks pass → the run passes. Any check fails → the run fails.
+  </Step>
+</Steps>
+
+One task, one world. Keep each task in its own world so it's clean to review. Next: [Designing a strong task](/building-tasks/designing-a-strong-task).

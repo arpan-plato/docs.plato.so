@@ -1,0 +1,55 @@
+---
+title: "Building, testing, and submitting"
+description: "The practical workflow — from a blank world to an approved task."
+---
+
+Here's the hands-on flow, from setting up a world to handing a finished task to us.
+
+## Build it by hand, use the assistant to review
+
+Write the task and the verifier **yourself**. Use the world-building assistant to set up the environment, to pressure-test what you wrote, and to catch problems — but not to invent the task or the grading for you. The judgment in the assignment and the checks is the whole point, and that has to be yours. A task where the assistant made up the scenario and the answers isn't testing your expertise; it's testing the assistant's.
+
+<Note>
+**One task per world.** Keep each task in its own world. The world is what we review, so mixing several tasks into one makes it messy to look at.
+</Note>
+
+## Run a benchmark
+
+When the task is ready, run a benchmark to see how the AI does. A **smoke test** first is worth it — it checks that the world is set up correctly (the data seeded, the apps reachable, the task solvable) *before* you spend a full run. If the smoke test fails, fix the world first.
+
+Then run the real benchmark and read the result:
+
+- **Passed** every time → too easy. Go back and harden it (see [Designing a strong task](/building-tasks/designing-a-strong-task)).
+- **Failed** → read *why*. If it's a genuine mistake a professional would recognize, great — that's the goal. If it failed for a broken reason (missing data, confusing instruction, a criterion that's too strict), fix that.
+- **Errored** → usually a setup or platform issue, not the agent. Re-run; if it keeps erroring, check your world's data and sign-ins.
+
+## Versions track themselves
+
+Every time you edit the world or the task and run a benchmark, a **new version is saved automatically**. You don't manage this by hand — it just keeps a record of how the task evolved, so you and we can see each change and its results. Iterate freely; the history is kept for you.
+
+## Submit for review
+
+When a task is done, hand it over:
+
+<Steps>
+  <Step title="Submit for review">
+    Click **Submit for review** in the world header. Add a note with anything we should know — what the task covers, edge cases you handled, anything you're unsure about or that's easy to miss.
+  </Step>
+  <Step title="The world freezes">
+    Submitting stops the workspace and makes the world read-only, with an **In review** badge. Need to keep working before we get to it? Click **Withdraw** and it unlocks again.
+  </Step>
+  <Step title="We review it">
+    We look it over and either approve or send it back.
+  </Step>
+</Steps>
+
+**If we send it back:** you'll see the reason in the banner and in the review timeline. Refine the task, save a new version with the fixes, and click **Resubmit**. (The same version can't be resubmitted, so make sure a new version is saved first.)
+
+**If we approve it:** the world is frozen for good as the accepted deliverable — it can't be edited or resubmitted. To build on it, click **Clone**: that gives you a fresh, editable copy you can start right away. Clone is available the moment you submit, so you never have to wait on us to keep going.
+
+## Staying in touch
+
+- **Questions on a specific task?** Use the review timeline (the comment icon in the world header) to leave a comment. We'll see it and reply there.
+- **Tracking your work:** your worlds list has a filter bar — **In progress / In review / Rejected / Approved** — so you can always see where everything stands.
+
+Next, see [Common mistakes to avoid](/building-tasks/common-mistakes) before you start.
