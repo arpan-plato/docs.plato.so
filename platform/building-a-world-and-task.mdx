@@ -33,6 +33,10 @@ The **instruction handed to the benchmark agent** — the assignment it will try
 
 Keep it to what a manager would actually send: short and natural. You don't need to spell out every step.
 
+<Note>
+**One task per world.** A world holds a single task — there's no way to add a second one. To build another task on the same environment, clone the world (see [Reusing seed data for a new task](#reusing-seed-data-for-a-new-task) below).
+</Note>
+
 ### Services
 
 The **simulators** — the apps your task runs on (Gmail, Google Sheets, an accounting tool, and so on). They're shown as immutable Plato artifacts pinned by ID, and they're **provisioned fresh for every run**, so each benchmark starts from the same clean state.
@@ -54,8 +58,23 @@ The Task, Services, and Verification you see together here are the complete defi
 
 At the top of the editor you'll see the task selector, a **Checkpoint** marker, and **All versions**. Every time you checkpoint your work, Plato saves a **version** automatically — you don't manage this by hand. It keeps a record of how the task evolved so you (and we) can see each change and the results it produced. Iterate freely; the history is kept for you.
 
+## Reusing seed data for a new task
+
+A world is deliberately **one task, one world** — you can't add a second task to it. But often you'll want another task built on the *same* environment: the same seeded inbox, workbook, and records. When you do:
+
+<Steps>
+  <Step title="Clone the world">
+    Use the **duplicate** action on the world's card in the dashboard. This gives you a fresh, editable copy with all the same simulators and seed data.
+  </Step>
+  <Step title="Change the task in the copy">
+    In the clone, rewrite the **Task** instruction and adjust the **Verification** criteria for the new assignment. The environment carries over, so you only change what the task asks for.
+  </Step>
+</Steps>
+
+This keeps each task cleanly in its own world — which is what we review — while letting you reuse the setup work you've already done.
+
 ## Opening someone else's world
 
-If you open a world you don't own, it's **read-only** — you can browse its tasks and conversation history, but not edit. To build on it, use **Take over** (or **duplicate** it from the dashboard), which gives you your own editable copy.
+If you open a world you don't own, it's **read-only** — you can browse its task and conversation history, but not edit. To build on it, use **Take over** (or **duplicate** it from the dashboard), which gives you your own editable copy.
 
 Next: [Running benchmarks](/platform/running-benchmarks).
