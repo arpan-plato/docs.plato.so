@@ -20,7 +20,7 @@ The left panel is the **world-building assistant**. This is your main tool for s
 - Think of it as a capable teammate doing the setup for you. You describe the scenario — *"seed a Gmail inbox with a message from the CFO, and a Google Sheet with these three proposals"* — and it builds it.
 
 <Note>
-The assistant builds the **environment** for you. The **task instruction** and the **grading criteria**, though, are yours to write — that's the expert judgment only you can supply. Use the assistant to set the stage, not to decide what "correct" means.
+The assistant can fill in the **task** and the **verifier** for you too — but *you* decide what they say. Tell it the assignment you want and the exact criteria to grade on, and let it do the typing. What it must never do is **decide** what the task is or what a correct answer looks like — that judgment is the expert part, and it has to come from you.
 </Note>
 
 ## The center panel — Task, Services, and Verification
@@ -29,7 +29,7 @@ The middle of the editor is where your task actually lives, in three sections.
 
 ### Task
 
-The **instruction handed to the benchmark agent** — the assignment it will try to complete. Write it here; edits **save automatically** into the world.
+The **instruction handed to the benchmark agent** — the assignment it will try to complete. Write it here yourself, or tell the assistant what the assignment should be and have it fill it in. Either way, edits **save automatically** into the world.
 
 Keep it to what a manager would actually send: short and natural. You don't need to spell out every step.
 
@@ -45,7 +45,7 @@ You generally set these up through the assistant rather than by hand.
 
 ### Verification
 
-**What each run is graded on**: a list of plain **criteria**, each a specific statement an agent **judge** marks pass or fail after the run. This is your grader.
+**What each run is graded on**: a list of plain **criteria**, each a specific statement an agent **judge** marks pass or fail after the run. This is your grader. Write the criteria yourself, or tell the assistant exactly what each run should be checked for and have it add them — as long as *you* decide what counts as correct.
 
 - Add one criterion per thing you want checked — a value, an action, a clear yes/no.
 - A **judge profile** decides how the criteria are evaluated; it's shown at the bottom of this section.
