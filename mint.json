@@ -33,14 +33,12 @@
   "anchors": [],
   "navigation": [
     {
-      "group": "Building Tasks",
+      "group": "Platform",
       "pages": [
-        "building-tasks/welcome",
-        "building-tasks/how-it-works",
-        "building-tasks/designing-a-strong-task",
-        "building-tasks/writing-verifiers",
-        "building-tasks/build-test-submit",
-        "building-tasks/common-mistakes"
+        "platform/getting-started",
+        "platform/building-a-world-and-task",
+        "platform/running-benchmarks",
+        "platform/submitting-and-review"
       ]
     },
     {

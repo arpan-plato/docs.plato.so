@@ -1,0 +1,61 @@
+---
+title: "Building a world and task"
+description: "The world editor: set up the environment with the assistant, write the task, and define how it's graded."
+---
+
+Creating a world drops you into the **editor** — the single screen where you do all your building. It has three panels: the **assistant** on the left, the **task** in the middle, and the **benchmark** tools on the right.
+
+## The workspace: running vs. stopped
+
+Your world runs on a live machine. When it's **Running**, you can edit it; when it's stopped, you see a **read-only view of the last checkpoint** with a prompt to start it.
+
+- **Stop workspace** (top right) shuts the machine down when you're done — worlds don't need to run while you're not working on them.
+- Reopening a stopped world shows its last saved state; start the workspace again to make changes.
+
+## The Agent panel (left) — your build assistant
+
+The left panel is the **world-building assistant**. This is your main tool for setting up the environment: you tell it, in plain language, what apps and data the world should contain, and it does the work — creating files, seeding records, wiring up the simulators.
+
+- As it works, you'll see its steps appear as a list (each marked **Completed** when done), and it reports back in plain language about what it did and what's left.
+- Think of it as a capable teammate doing the setup for you. You describe the scenario — *"seed a Gmail inbox with a message from the CFO, and a Google Sheet with these three proposals"* — and it builds it.
+
+<Note>
+The assistant builds the **environment** for you. The **task instruction** and the **grading criteria**, though, are yours to write — that's the expert judgment only you can supply. Use the assistant to set the stage, not to decide what "correct" means.
+</Note>
+
+## The center panel — Task, Services, and Verification
+
+The middle of the editor is where your task actually lives, in three sections.
+
+### Task
+
+The **instruction handed to the benchmark agent** — the assignment it will try to complete. Write it here; edits **save automatically** into the world.
+
+Keep it to what a manager would actually send: short and natural. You don't need to spell out every step.
+
+### Services
+
+The **simulators** — the apps your task runs on (Gmail, Google Sheets, an accounting tool, and so on). They're shown as immutable Plato artifacts pinned by ID, and they're **provisioned fresh for every run**, so each benchmark starts from the same clean state.
+
+You generally set these up through the assistant rather than editing them by hand.
+
+### Verification
+
+**What each run is graded on**: a list of plain **criteria**, each a specific statement an agent **judge** marks pass or fail after the run. This is your grader.
+
+- Add one criterion per thing you want checked — a value, an action, a clear yes/no.
+- A **judge profile** decides how the criteria are evaluated; it's shown at the bottom of this section.
+
+<Tip>
+The Task, Services, and Verification you see together here are the complete definition of your task. If it's not in one of these three, it won't affect the run or the grade.
+</Tip>
+
+## Versions save themselves
+
+At the top of the editor you'll see the task selector, a **Checkpoint** marker, and **All versions**. Every time you checkpoint your work, Plato saves a **version** automatically — you don't manage this by hand. It keeps a record of how the task evolved so you (and we) can see each change and the results it produced. Iterate freely; the history is kept for you.
+
+## Opening someone else's world
+
+If you open a world you don't own, it's **read-only** — you can browse its tasks and conversation history, but not edit. To build on it, use **Take over** (or **duplicate** it from the dashboard), which gives you your own editable copy.
+
+Next: [Running benchmarks](/platform/running-benchmarks).

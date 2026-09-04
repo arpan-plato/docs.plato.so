@@ -1,0 +1,50 @@
+---
+title: "Running benchmarks"
+description: "Smoke-test your task, run the AI against it, and read the results and per-criterion grades."
+---
+
+The right panel of the editor is where you run the AI against your task and see how it did. It has two tabs: **Benchmark** (running and results) and **Computer** (watching a live run).
+
+## Pick a model
+
+Under **Run benchmark**, the model dropdown lists the agents you can run against your task — Claude and Codex variants, each in a **code** or **computer-use** flavor. Pick one; you can run the same task against several to compare.
+
+## Smoke test first
+
+Before a full run, use the **Smoke test**. It's a quick check that the task is **set up correctly and can be graded** — the world seeds, the apps are reachable, the criteria evaluate. Benchmarks unlock once a smoke test passes; until then you'll see *"No passing smoke test for the current content."*
+
+<Tip>
+A smoke test is cheaper than a full benchmark, so it's worth running first. If it fails, fix the world before spending a full run.
+</Tip>
+
+## Run the benchmark
+
+Click **Run benchmark**. The AI boots into a fresh copy of your world, works through the task, and the judge grades the result against your criteria.
+
+## Read the results
+
+The **Runs** section lists results for the current task version, grouped by model:
+
+- Each model row shows a **RUNS** count and a **SCORE**. Expand it to see individual runs.
+- Each run shows how many criteria passed (e.g. **11/13**), how long it took, its **cost**, and a **View trace** link to replay exactly what the agent did, step by step.
+- **Simulators launched with this run** lists which apps the run actually used.
+
+### Judge assessment
+
+Below the run, **Judge assessment** shows the **per-criterion verdicts** — every criterion with a green check (passed) or a red ✗ (failed). Failed criteria open automatically; click any row to expand its **reasoning**, where the judge explains, citing what the agent actually did, why it passed or failed.
+
+This is the most important thing to read. It tells you *why* the AI failed — which is what separates a genuine failure (great) from a broken task (fix it).
+
+<Note>
+The judge grades the **actual end state** of the world — the real cell values, the real sent email — not what the agent *says* it did. If a criterion checks that an email was sent, the judge looks for the sent email.
+</Note>
+
+## Watch a run: the Computer tab
+
+The **Computer** tab opens the task's live machine. Click **Debug** to boot the task in an isolated session and watch its main VM — useful for seeing what the agent sees, or interacting with the apps yourself while you build.
+
+## Comparing versions
+
+Because every checkpoint saves a version, the Runs panel shows results **for the current version** by default (e.g. *"Showing v7 runs"*). Use **show all versions** to see earlier results and how your changes moved the score.
+
+Next: [Submitting for review](/platform/submitting-and-review).
