@@ -7,10 +7,10 @@ Creating a world drops you into the **editor** — the single screen where you d
 
 ## The workspace: running vs. stopped
 
-Your world runs on a live machine. When it's **Running**, you can edit it; when it's stopped, you see a **read-only view of the last checkpoint** with a prompt to start it.
+A world is either **running** or **stopped**. While it's **running**, it's open for you to work in and make changes. When it's stopped, you see a **read-only snapshot** of your last saved state — you can look but not edit until you start it up again.
 
-- **Stop workspace** (top right) shuts the machine down when you're done — worlds don't need to run while you're not working on them.
-- Reopening a stopped world shows its last saved state; start the workspace again to make changes.
+- **Stop workspace** (top right) pauses the world when you're done. Your work is saved, and there's no need to keep it open while you're away.
+- Reopening a stopped world shows that last saved state; start it up again to make changes.
 
 ## The Agent panel (left) — your build assistant
 
@@ -39,9 +39,9 @@ Keep it to what a manager would actually send: short and natural. You don't need
 
 ### Services
 
-The **simulators** — the apps your task runs on (Gmail, Google Sheets, an accounting tool, and so on). They're shown as immutable Plato artifacts pinned by ID, and they're **provisioned fresh for every run**, so each benchmark starts from the same clean state.
+The **simulators** — the apps your task runs on (Gmail, Google Sheets, an accounting tool, and so on). Each one is a fixed, locked version that's **set up fresh for every run**, so every test of your task starts from the exact same clean state.
 
-You generally set these up through the assistant rather than editing them by hand.
+You generally set these up through the assistant rather than by hand.
 
 ### Verification
 
